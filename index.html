@@ -75,8 +75,8 @@
             <div id="container-itens-epi"></div>
             <button class="btn-secundario" style="background:#28a745;" onclick="adicionarItemEPI()">➕ Adicionar EPI à Lista</button>
             
-            <label class="info-label">Foto do Recebimento (Opcional):</label>
-            <input type="file" id="ent-foto" accept="image/*" class="input-campo" onchange="processarFoto(this)">
+            <label class="info-label">Foto do Recebimento (Câmera ou Arquivo):</label>
+            <input type="file" id="ent-foto" accept="image/*" capture="environment" class="input-campo" onchange="processarFoto(this)">
             
             <label class="info-label">Assinatura do Colaborador: *</label>
             <canvas id="canvas-ass"></canvas>
@@ -164,6 +164,11 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
+                    if(d.versao_backend !== "v5") {
+                        alert("❌ O seu Google Apps Script não está na Versão V5. Atualize o código e clique em 'Nova Versão' ao implantar!");
+                        btn.innerText = "Entrar"; return;
+                    }
+                    window.usuarioLogado = u; 
                     let r2 = await fetch(`${API_URL}?acao=buscar_inicial`); 
                     bd = await r2.json();
                     if(bd.sucesso) {
@@ -201,7 +206,6 @@
             document.getElementById('tabela-estoque').innerHTML = htmlEst + "</table>";
         }
 
-        // FUNÇÃO DE BUSCA/LUPA PARA OS COLABORADORES
         function filtrarColab(texto, selectId) {
             let select = document.getElementById(selectId);
             let options = '<option value="">Selecione...</option>';
@@ -212,7 +216,6 @@
             });
             select.innerHTML = options;
             
-            // Força a limpeza da ficha/campos se a lista for alterada
             if(selectId === 'ent-colab') preencherDadosColab();
             if(selectId === 'cons-colab') carregarFichaColab();
         }
@@ -314,7 +317,7 @@
         }
 
         function carregarFichaColab() {
-            let c = String(document.getElementById('cons-colab').value).trim().toUpperCase(); 
+            let c = String(document.getElementById('cons-colab').value).trim().toUpperCase().replace(/\s+/g, ' '); 
             let f = bd.fichas[c];
             
             if(!c) { document.getElementById('resultado-ficha').innerHTML = ""; return; }
