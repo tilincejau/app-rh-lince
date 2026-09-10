@@ -7,6 +7,8 @@
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; display: flex; flex-direction: column; align-items: center; }
         .app-container { width: 100%; max-width: 500px; padding: 20px; box-sizing: border-box; }
+        .logo { width: 100%; max-width: 250px; display: block; margin: 0 auto 10px auto; }
+        .desenvolvedor { text-align: center; font-size: 11px; color: #666; margin-top: -10px; margin-bottom: 20px; }
         .input-campo, select { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 15px; }
         .btn-principal { background-color: #0b5394; color: white; border: none; border-radius: 6px; padding: 15px; font-size: 16px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 10px; }
         .btn-secundario { background-color: #666; color: white; border: none; border-radius: 6px; padding: 12px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 15px; }
@@ -25,6 +27,9 @@
 
     <!-- TELA LOGIN -->
     <div id="tela-login" class="app-container">
+        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
+        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+        
         <h2>Controle de EPIs - RH</h2>
         <input type="text" id="campo-usuario" class="input-campo" placeholder="Usuário">
         <input type="password" id="campo-senha" class="input-campo" placeholder="Senha">
@@ -33,6 +38,9 @@
 
     <!-- TELA MENU -->
     <div id="tela-menu" class="app-container" style="display: none;">
+        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
+        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+
         <h2>Menu Principal</h2>
         <button class="btn-principal" onclick="abrirTela('tela-entrega')">👷 Entrega de EPIs</button>
         <button class="btn-principal" onclick="abrirTela('tela-consulta')">🔍 Consulta Ficha de EPIs</button>
@@ -43,6 +51,9 @@
 
     <!-- TELA ENTREGA -->
     <div id="tela-entrega" class="app-container" style="display: none;">
+        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
+        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+
         <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar</button>
         <div class="card">
             <h3>Nova Entrega de EPI</h3>
@@ -67,6 +78,9 @@
 
     <!-- TELA CONSULTA -->
     <div id="tela-consulta" class="app-container" style="display: none;">
+        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
+        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+
         <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar</button>
         <div class="card">
             <h3>Consultar Histórico</h3>
@@ -77,6 +91,9 @@
 
     <!-- TELA CADASTRO COLAB -->
     <div id="tela-cadastro-colab" class="app-container" style="display: none;">
+        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
+        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+
         <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar</button>
         <div class="card">
             <h3>Novo Colaborador</h3>
@@ -99,6 +116,9 @@
 
     <!-- TELA ESTOQUE -->
     <div id="tela-estoque" class="app-container" style="display: none;">
+        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
+        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+
         <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar</button>
         
         <div class="card">
@@ -136,7 +156,7 @@
                     if(bd.sucesso) {
                         popularListas(); abrirTela('tela-menu'); initPad();
                     } else {
-                        alert("Erro ao buscar dados da planilha: " + bd.erro);
+                        alert("Erro ao buscar dados da planilha:\n" + bd.erro);
                     }
                 } else { 
                     alert("Aviso: " + (d.erro || "Usuário ou Senha incorreta!")); 
