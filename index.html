@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RH - Controle de EPIs</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; display: flex; flex-direction: column; align-items: center; }
+        .app-container { width: 100%; max-width: 500px; padding: 20px; box-sizing: border-box; }
+        .input-campo, select { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 15px; }
+        .btn-principal { background-color: #0b5394; color: white; border: none; border-radius: 6px; padding: 15px; font-size: 16px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 10px; }
+        .btn-secundario { background-color: #666; color: white; border: none; border-radius: 6px; padding: 12px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 15px; }
+        .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        h2, h3 { color: #0b5394; text-align: center; margin-top: 0; }
+        .linha-item { border: 1px dashed #ccc; padding: 10px; border-radius: 6px; margin-bottom: 10px; background: #fafafa; position: relative; }
+        .btn-remover { position: absolute; top: 5px; right: 5px; background: red; color: white; border: none; border-radius: 4px; padding: 5px; cursor: pointer; font-size: 10px; }
+        canvas { border: 2px dashed #0b5394; background: #fff; width: 100%; height: 120px; border-radius: 6px; touch-action: none; margin-bottom: 5px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 6px; text-align: center; }
+        th { background-color: #eee; }
+        .status-valido { color: green; font-weight: bold; } .status-vencido { color: red; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <!-- TELA LOGIN -->
+    <div id="tela-login" class="app-container">
+        <h2>Controle de EPIs - RH</h2>
+        <input type="text" id="campo-usuario" class="input-campo" placeholder="Usuário">
+        <input type="password" id="campo-senha" class="input-campo" placeholder="Senha">
+        <button class="btn-principal" onclick="fazerLogin()">Entrar</button>
+    </div>
+
+    <!-- TELA MENU -->
+    <div id="tela-menu" class="app-container" style="display: none;">
+        <h2>Menu Principal</h2>
+        <button class="btn-principal" onclick="abrirTela('tela-entrega')">👷 Entrega de EPIs</button>
+        <button class="btn-principal" onclick="abrirTela('tela-consulta')">🔍 Consulta Ficha de EPIs</button>
+        <button class="btn-principal" onclick="abrirTela('tela-cadastro-colab')">👤 Cadastro Colaborador</button>
+        <button class="btn-principal" onclick="abrirTela('tela-estoque')">📦 Estoque & Entradas</button>
+        <button class="btn-secundario" onclick="location.reload()">Sair</button>
+    </div>
+
+    <!-- TELA ENTREGA -->
+    <div id="tela-entrega" class="app-container" style="display: none;">
+        <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar</button>
+        <div class="card">
+            <h3>Nova Entrega de EPI</h3>
+            <label>Colaborador:</label>
+            <select id="ent-colab" class="input-campo" onchange="preencherDadosColab()"></select>
+            <input type="hidden" id="ent-funcao"><input type="hidden" id="ent-setor"><input type="hidden" id="ent-admissao"><input type="hidden" id="ent-matricula">
+            
+            <h4>Itens da Entrega</h4>
+            <div id="container-itens-epi"></div>
+            <button class="btn-secundario" style="background:#28a745;" onclick="adicionarItemEPI()">➕ Adicionar Outro EPI</button>
+            
+            <label>Foto do Recebimento (Opcional):</label>
+            <input type="file" id="ent-foto" accept="image/*" class="input-campo" onchange="processarFoto(this)">
+            
+            <label>Assinatura do Colaborador: *</label>
+            <canvas id="canvas-ass"></canvas>
+            <button class="btn-secundario" style="padding:5px;" onclick="limparPad()">Limpar Assinatura</button>
+            
+            <button class="btn-principal" id="btn-salvar-entrega" onclick="salvarEntrega()">💾 Salvar e Gerar PDF</button>
+        </div>
+    </div>
+
+    <!-- TELA CONSULTA -->
+    <div id="tela-consulta" class="app-container" style="display: none;">
+        <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar</button>
+        <div class="card">
+            <h3>Consultar Histórico</h3>
+            <select id="cons-colab" class="input-campo" onchange="carregarFichaColab()"></select>
+            <div id="resultado-ficha" style="overflow-x: auto;"></div>
+        </div>
+    </div>
+
+    <!-- TELA CADASTRO COLAB -->
+    <div id="tela-cadastro-colab" class="app-container" style="display: none;">
+        <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar</button>
+        <div class="card">
+            <h3>Novo Colaborador</h3>
+            <input type="text" id="cad-mat" class="input-campo" placeholder="Matrícula">
+            <input type="text" id="cad-nome" class="input-campo" placeholder="Nome Completo">
+            <input type="text" id="cad-func" class="input-campo" placeholder="Função">
+            <select id="cad-setor" class="input-campo">
+                <option value="">Selecione o Setor...</option>
+                <option value="ADM">ADM</option>
+                <option value="COMERCIAL">COMERCIAL</option>
+                <option value="LOGÍSTICA">LOGÍSTICA</option>
+                <option value="OPERACIONAL">OPERACIONAL</option>
+                <option value="PUXADA">PUXADA</option>
+            </select>
+            <label>Data de Admissão:</label>
+            <input type="date" id="cad-adm" class="input-campo">
+            <button class="btn-principal" onclick="salvarNovoColab()">Cadastrar</button>
+        </div>
+    </div>
+
+    <!-- TELA ESTOQUE -->
+    <div id="tela-estoque" class="app-container" style="display: none;">
+        <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar</button>
+        
+        <div class="card">
+            <h3>📥 Lançar Entrada (Compra)</h3>
+            <select id="est-epi" class="input-campo"></select>
+            <input type="number" id="est-qtd" class="input-campo" placeholder="Quantidade Comprada">
+            <input type="text" id="est-nf" class="input-campo" placeholder="Nota Fiscal / Fornecedor">
+            <button class="btn-principal" onclick="salvarEntrada()">Registrar Entrada</button>
+        </div>
+
+        <div class="card">
+            <h3>📦 Saldo Atual</h3>
+            <div id="tabela-estoque" style="overflow-x: auto;"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbzO0b-B8n4grYA7GmyiL9AwFinaJTVll9TldFvDOFBhRS9xFAJu9TG-lC6lwN20X7pBQQ/exec";
+        
+        let bd = {}; let itemCount = 0; let b64Foto = ""; let isDrawing = false; let ctx;
+
+        async function fazerLogin() {
+            let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
+            if(!u || !s) return alert("Preencha tudo!");
+            document.querySelector('#tela-login .btn-principal').innerText = "Carregando...";
+            
+            try {
+                let r = await fetch(`${API_URL}?acao=login&usuario=${u}&senha=${s}`); let d = await r.json();
+                if(d.sucesso){
+                    let r2 = await fetch(`${API_URL}?acao=buscar_inicial`); bd = await r2.json();
+                    popularListas(); abrirTela('tela-menu'); initPad();
+                } else { alert("Senha incorreta!"); }
+            } catch(e) { alert("Erro de rede."); }
+            document.querySelector('#tela-login .btn-principal').innerText = "Entrar";
+        }
+
+        function abrirTela(id) { document.querySelectorAll('.app-container').forEach(t => t.style.display = 'none'); document.getElementById(id).style.display = 'block'; }
+
+        function popularListas() {
+            let optColab = '<option value="">Selecione o Colaborador...</option>';
+            bd.colaboradores.sort((a,b) => a.nome.localeCompare(b.nome)).forEach(c => optColab += `<option value="${c.nome}">${c.nome}</option>`);
+            document.getElementById('ent-colab').innerHTML = optColab;
+            document.getElementById('cons-colab').innerHTML = optColab;
+
+            let optEPI = '<option value="">Selecione o EPI...</option>';
+            bd.epis.sort().forEach(e => optEPI += `<option value="${e}">${e}</option>`);
+            document.getElementById('est-epi').innerHTML = optEPI;
+
+            let htmlEst = "<table><tr><th>EPI</th><th>ENTRADA</th><th>SAÍDA</th><th>SALDO FINAL</th></tr>";
+            bd.estoque.forEach(e => { htmlEst += `<tr><td>${e.epi}</td><td>${e.entradas}</td><td>${e.saidas}</td><td><b>${e.saldo}</b></td></tr>`; });
+            document.getElementById('tabela-estoque').innerHTML = htmlEst + "</table>";
+        }
+
+        function preencherDadosColab() {
+            let nome = document.getElementById('ent-colab').value;
+            let c = bd.colaboradores.find(x => x.nome === nome);
+            if(c){ document.getElementById('ent-funcao').value = c.funcao; document.getElementById('ent-setor').value = c.setor; document.getElementById('ent-admissao').value = c.admissao; document.getElementById('ent-matricula').value = c.matricula; }
+        }
+
+        function adicionarItemEPI() {
+            itemCount++;
+            let div = document.createElement('div'); div.className = "linha-item"; div.id = "item-" + itemCount;
+            let optEPI = '<option value="">Selecione o EPI...</option>'; bd.epis.forEach(e => optEPI += `<option value="${e}">${e}</option>`);
+            div.innerHTML = `
+                <button class="btn-remover" onclick="this.parentElement.remove()">X</button>
+                <label>EPI:</label><select class="input-campo sel-epi" onchange="buscarValidade(this)">${optEPI}</select>
+                <label>Qtd:</label><input type="number" class="input-campo sel-qtd" value="1">
+                <label>C.A.:</label><input type="text" class="input-campo sel-ca" placeholder="Nº do CA ou N/A">
+                <label>Motivo:</label><select class="input-campo sel-motivo"><option>1ª Entrega</option><option>Troca por Desgaste</option><option>Perda/Dano</option></select>
+                <input type="hidden" class="sel-duracao">
+            `;
+            document.getElementById('container-itens-epi').appendChild(div);
+        }
+
+        function buscarValidade(selectEl) {
+            let epi = selectEl.value; let func = document.getElementById('ent-funcao').value;
+            let val = bd.validades.find(v => v.epi === epi && v.funcao === func);
+            let box = selectEl.parentElement;
+            if(val) { box.querySelector('.sel-duracao').value = val.dias; box.querySelector('.sel-qtd').value = val.qtd || 1; }
+            else { box.querySelector('.sel-duracao').value = ""; }
+        }
+
+        function initPad() {
+            let cvs = document.getElementById('canvas-ass'); ctx = cvs.getContext('2d');
+            const getP = e => { let r = cvs.getBoundingClientRect(); let x = e.touches ? e.touches[0].clientX : e.clientX; let y = e.touches ? e.touches[0].clientY : e.clientY; return { x: (x - r.left)*(cvs.width/r.width), y: (y - r.top)*(cvs.height/r.height) }; };
+            let s = e => { e.preventDefault(); isDrawing = true; let p = getP(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); cvs.setAttribute('d', '1'); };
+            let m = e => { e.preventDefault(); if(isDrawing){ let p = getP(e); ctx.lineTo(p.x, p.y); ctx.stroke(); }};
+            let f = e => { isDrawing = false; };
+            cvs.onmousedown = s; cvs.ontouchstart = s; cvs.onmousemove = m; cvs.ontouchmove = m; cvs.onmouseup = f; cvs.ontouchend = f;
+        }
+        function limparPad() { ctx.clearRect(0,0,300,150); document.getElementById('canvas-ass').removeAttribute('d'); }
+
+        function processarFoto(input) {
+            if (!input.files[0]) return; let r = new FileReader();
+            r.onload = e => { b64Foto = e.target.result; }; r.readAsDataURL(input.files[0]);
+        }
+
+        async function salvarEntrega() {
+            let colab = document.getElementById('ent-colab').value;
+            if(!colab) return alert("Selecione o Colaborador!");
+            if(!document.getElementById('canvas-ass').getAttribute('d')) return alert("Assinatura obrigatória!");
+            
+            let itens = [];
+            document.querySelectorAll('.linha-item').forEach(box => {
+                let epi = box.querySelector('.sel-epi').value;
+                if(epi) itens.push({ epi: epi, qtd: box.querySelector('.sel-qtd').value, ca: box.querySelector('.sel-ca').value, motivo: box.querySelector('.sel-motivo').value, duracao: box.querySelector('.sel-duracao').value });
+            });
+            if(itens.length === 0) return alert("Adicione pelo menos um EPI!");
+
+            let p = {
+                acao: "salvar_entrega", colaborador: colab,
+                matricula: document.getElementById('ent-matricula').value, admissao: document.getElementById('ent-admissao').value,
+                funcao: document.getElementById('ent-funcao').value, setor: document.getElementById('ent-setor').value,
+                assinatura: document.getElementById('canvas-ass').toDataURL(), foto: b64Foto, itens: itens
+            };
+
+            let btn = document.getElementById('btn-salvar-entrega');
+            btn.innerText = "Gerando PDF... Aguarde!";
+            btn.disabled = true;
+            try {
+                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); let d = await r.json();
+                if(d.sucesso) { alert("Entrega registrada com Sucesso!"); window.open(d.pdf, '_blank'); location.reload(); }
+            } catch(e) { alert("Erro de conexão"); }
+            btn.innerText = "💾 Salvar e Gerar PDF";
+            btn.disabled = false;
+        }
+
+        function carregarFichaColab() {
+            let c = document.getElementById('cons-colab').value; let f = bd.fichas[c];
+            if(!f) return document.getElementById('resultado-ficha').innerHTML = "<p style='text-align:center; margin-top:20px; color:#666;'>Sem histórico de EPI para este colaborador.</p>";
+            let html = "<table><tr><th>Data</th><th>EPI</th><th>C.A.</th><th>Troca</th><th>Status</th></tr>";
+            f.forEach(i => {
+                let cl = i.status === "Vencido" ? "status-vencido" : "status-valido";
+                html += `<tr><td>${i.data}</td><td>${i.epi} (${i.qtd})</td><td>${i.ca}</td><td>${i.prox_troca}</td><td class="${cl}">${i.status}</td></tr>`;
+            });
+            document.getElementById('resultado-ficha').innerHTML = html + "</table>";
+        }
+
+        async function salvarNovoColab() {
+            let p = { acao: "cadastrar_colaborador", matricula: document.getElementById('cad-mat').value, nome: document.getElementById('cad-nome').value, funcao: document.getElementById('cad-func').value, setor: document.getElementById('cad-setor').value, admissao: document.getElementById('cad-adm').value };
+            if(!p.nome || !p.setor) return alert("Nome e Setor são obrigatórios!");
+            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("Colaborador Cadastrado!"); location.reload();
+        }
+
+        async function salvarEntrada() {
+            let p = { acao: "salvar_entrada_estoque", epi: document.getElementById('est-epi').value, qtd: document.getElementById('est-qtd').value, nf: document.getElementById('est-nf').value };
+            if(!p.epi || !p.qtd) return alert("Preencha EPI e Quantidade!");
+            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("Estoque atualizado!"); location.reload();
+        }
+    </script>
+</body>
+</html>
