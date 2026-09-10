@@ -123,16 +123,28 @@
         async function fazerLogin() {
             let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
             if(!u || !s) return alert("Preencha tudo!");
-            document.querySelector('#tela-login .btn-principal').innerText = "Carregando...";
+            let btn = document.querySelector('#tela-login .btn-principal');
+            btn.innerText = "Conectando ao Google... ⏳";
             
             try {
-                let r = await fetch(`${API_URL}?acao=login&usuario=${u}&senha=${s}`); let d = await r.json();
+                let r = await fetch(`${API_URL}?acao=login&usuario=${u}&senha=${s}`); 
+                let d = await r.json();
+                
                 if(d.sucesso){
-                    let r2 = await fetch(`${API_URL}?acao=buscar_inicial`); bd = await r2.json();
-                    popularListas(); abrirTela('tela-menu'); initPad();
-                } else { alert("Senha incorreta!"); }
-            } catch(e) { alert("Erro de rede."); }
-            document.querySelector('#tela-login .btn-principal').innerText = "Entrar";
+                    let r2 = await fetch(`${API_URL}?acao=buscar_inicial`); 
+                    bd = await r2.json();
+                    if(bd.sucesso) {
+                        popularListas(); abrirTela('tela-menu'); initPad();
+                    } else {
+                        alert("Erro ao buscar dados da planilha: " + bd.erro);
+                    }
+                } else { 
+                    alert("Aviso: " + (d.erro || "Usuário ou Senha incorreta!")); 
+                }
+            } catch(e) { 
+                alert("❌ BLOQUEIO DO GOOGLE (CORS)\n\nMotivo exato: " + e.message + "\n\nO Google bateu a porta. Volte no Apps Script, clique em Gerenciar Implantações > Lápis e verifique:\n1. 'Executar como' = 'Eu'\n2. 'Quem tem acesso' = 'Qualquer pessoa'\n3. E o mais importante: Versão = NOVA VERSÃO!"); 
+            }
+            btn.innerText = "Entrar";
         }
 
         function abrirTela(id) { document.querySelectorAll('.app-container').forEach(t => t.style.display = 'none'); document.getElementById(id).style.display = 'block'; }
@@ -221,6 +233,7 @@
             try {
                 let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); let d = await r.json();
                 if(d.sucesso) { alert("Entrega registrada com Sucesso!"); window.open(d.pdf, '_blank'); location.reload(); }
+                else { alert("Erro ao gerar PDF: " + d.erro); }
             } catch(e) { alert("Erro de conexão"); }
             btn.innerText = "💾 Salvar e Gerar PDF";
             btn.disabled = false;
