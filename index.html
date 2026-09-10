@@ -63,7 +63,7 @@
             <h3>Nova Entrega de EPI</h3>
             
             <label class="info-label">Data e Hora:</label>
-            <input type="datetime-local" id="ent-data" class="input-campo">
+            <input type="datetime-local" id="ent-data" class="input-campo" onchange="recalcularTodasAsValidades()">
 
             <label class="info-label">Busque o Colaborador:</label>
             <input type="text" id="busca-ent-colab" class="input-campo" placeholder="🔍 Digite para filtrar..." onkeyup="filtrarColab(this.value, 'ent-colab')">
@@ -164,8 +164,8 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v5") {
-                        alert("❌ O seu Google Apps Script não está na Versão V5. Atualize o código e clique em 'Nova Versão' ao implantar!");
+                    if(d.versao_backend !== "v6") {
+                        alert("❌ O seu Google Apps Script não está na Versão V6. Atualize o código e clique em 'Nova Versão' ao implantar!");
                         btn.innerText = "Entrar"; return;
                     }
                     window.usuarioLogado = u; 
@@ -225,6 +225,7 @@
             let c = bd.colaboradores.find(x => x.nome === nome);
             if(c){ document.getElementById('ent-funcao').value = c.funcao; document.getElementById('ent-setor').value = c.setor; document.getElementById('ent-admissao').value = c.admissao; document.getElementById('ent-matricula').value = c.matricula; }
             else { document.getElementById('ent-funcao').value = ""; }
+            recalcularTodasAsValidades();
         }
 
         function adicionarItemEPI() {
@@ -245,6 +246,18 @@
                 <label class="info-label">C.A. (Selecione N/A ou Digite):</label>
                 <input type="text" class="input-campo sel-ca" list="opcoes-ca" placeholder="Ex: 12345 ou N/A">
                 
+                <div style="display:flex; gap:10px;">
+                    <div style="flex:1;">
+                        <label class="info-label">Duração (Dias):</label>
+                        <input type="text" class="input-campo sel-duracao-txt" readonly style="background:#eee; text-align:center;">
+                        <input type="hidden" class="sel-duracao">
+                    </div>
+                    <div style="flex:1;">
+                        <label class="info-label">Próxima Troca:</label>
+                        <input type="text" class="input-campo sel-proxtroca" readonly style="background:#eee; text-align:center;">
+                    </div>
+                </div>
+
                 <label class="info-label">Motivo:</label>
                 <select class="input-campo sel-motivo">
                     <option>1ª Entrega</option>
@@ -252,18 +265,43 @@
                     <option>Perda/Dano</option>
                     <option>Extensão do Prazo</option>
                 </select>
-                
-                <input type="hidden" class="sel-duracao">
             `;
             document.getElementById('container-itens-epi').appendChild(div);
         }
 
+        function recalcularTodasAsValidades() {
+            document.querySelectorAll('.sel-epi').forEach(select => {
+                if(select.value !== "") buscarValidade(select);
+            });
+        }
+
         function buscarValidade(selectEl) {
             let epi = selectEl.value; let func = document.getElementById('ent-funcao').value;
-            let val = bd.validades.find(v => String(v.epi).trim() === String(epi).trim() && String(v.funcao).trim() === String(func).trim());
-            let box = selectEl.parentElement;
-            if(val) { box.querySelector('.sel-duracao').value = val.dias; box.querySelector('.sel-qtd').value = val.qtd || 1; }
-            else { box.querySelector('.sel-duracao').value = ""; }
+            let val = bd.validades.find(v => String(v.epi).trim().toUpperCase() === String(epi).trim().toUpperCase() && String(v.funcao).trim().toUpperCase() === String(func).trim().toUpperCase());
+            let box = selectEl.closest('.linha-item');
+            
+            if(val) { 
+                box.querySelector('.sel-duracao').value = val.dias; 
+                box.querySelector('.sel-duracao-txt').value = val.dias + " dias"; 
+                box.querySelector('.sel-qtd').value = val.qtd || 1; 
+                
+                let dtInput = document.getElementById('ent-data').value;
+                if(dtInput && val.dias) {
+                    let d = new Date(dtInput);
+                    d.setDate(d.getDate() + parseInt(val.dias));
+                    let dia = String(d.getDate()).padStart(2, '0');
+                    let mes = String(d.getMonth() + 1).padStart(2, '0');
+                    let ano = d.getFullYear();
+                    box.querySelector('.sel-proxtroca').value = `${dia}/${mes}/${ano}`;
+                } else {
+                    box.querySelector('.sel-proxtroca').value = "---";
+                }
+            }
+            else { 
+                box.querySelector('.sel-duracao').value = ""; 
+                box.querySelector('.sel-duracao-txt').value = "S/ Regra"; 
+                box.querySelector('.sel-proxtroca').value = "---";
+            }
         }
 
         function initPad() {
