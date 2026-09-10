@@ -1,582 +1,438 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RH - Controle de EPIs</title>
+/* =========================================================
+   CONTROLE DE EPIS LINCE - GOOGLE APPS SCRIPT (BACKEND V8)
+   ========================================================= */
+
+// MAPA EXATO DAS SUAS PASTAS NO GOOGLE DRIVE
+var PASTAS = {
+  "ADM": "15ZesKJ8z-zbwshOhB7NT6Bda5UINaGrW",
+  "ADMINISTRATIVO": "15ZesKJ8z-zbwshOhB7NT6Bda5UINaGrW",
+  "COMERCIAL": "1BAoTXO4ijOaNbD5D_9xp12oNm0jIg9BQ",
+  "LOGÍSTICA": "1aE7jXYhntXUgql8wMsV3hS-_5LlDooVi",
+  "OPERACIONAL": "1eYPici-N-ntYypOYUDKCE5qlp2aHaavm",
+  "PUXADA": "1uE6Bsd8WyNEgFiYIwsr5nA6ImxVZGGlf",
+  "FOTOS": "1fVo2RgWwQPx-zTtUjK1BHhUlYAvql8gg",
+  "ESTOQUE": "1piNPTstMPQ73zXkqeXSCCA-g-BeMoOBC"
+};
+
+function doGet(e) {
+  try {
+    var acao = e.parameter.acao;
+    if (acao === 'login') return verificarLogin(e.parameter.usuario, e.parameter.senha);
+    if (acao === 'buscar_inicial') return buscarInicial();
+    return retornarJSON({"erro": "Ação não encontrada"});
+  } catch (erro) { return retornarJSON({"erro": erro.message}); }
+}
+
+function doPost(e) {
+  try {
+    var dados = JSON.parse(e.postData.contents);
+    var acao = dados.acao;
+    if (acao === 'salvar_entrega') return salvarEntrega(dados);
+    if (acao === 'cadastrar_colaborador') return cadastrarColaborador(dados);
+    if (acao === 'salvar_entrada_estoque') return salvarEntradaEstoque(dados);
+    if (acao === 'gerar_pdf_estoque') return gerarPdfEstoque();
+    return retornarJSON({"erro": "Ação POST não encontrada"});
+  } catch (erro) { return retornarJSON({"erro": erro.message}); }
+}
+
+function retornarJSON(obj) { return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON); }
+
+function getDadosAbaSeguro(ss, nomeAba) {
+  var abas = ss.getSheets();
+  var nomeBusca = String(nomeAba).trim().toLowerCase().replace(/\s+/g, ' ');
+  for (var i = 0; i < abas.length; i++) {
+    var nomeAtual = String(abas[i].getName()).trim().toLowerCase().replace(/\s+/g, ' ');
+    if (nomeAtual === nomeBusca) { return abas[i].getDataRange().getValues(); }
+  }
+  return []; 
+}
+
+function parseDataBR(str) {
+  if(!str) return 0;
+  var p = str.split('/');
+  if(p.length !== 3) return 0;
+  return new Date(p[2], p[1]-1, p[0]).getTime();
+}
+
+function ordenarHistorico(arr) {
+  arr.sort(function(a, b) {
+    var eA = String(a.epi).trim().toUpperCase();
+    var eB = String(b.epi).trim().toUpperCase();
+    if(eA < eB) return -1;
+    if(eA > eB) return 1;
+    return parseDataBR(a.prox) - parseDataBR(b.prox);
+  });
+  return arr;
+}
+
+function urlDiretaDrive(url) {
+  if(!url) return "";
+  var match = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  var id = match ? match[1] : null;
+  if(!id) {
+    match = url.match(/id=([a-zA-Z0-9_-]+)/);
+    id = match ? match[1] : null;
+  }
+  if(id) return "https://drive.google.com/uc?export=view&id=" + id;
+  return url;
+}
+
+function verificarLogin(u, s) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var dados = getDadosAbaSeguro(ss, "Usuarios");
+  if (dados.length === 0) return retornarJSON({"erro": "Aba 'Usuarios' não encontrada."});
+  for (var i = 1; i < dados.length; i++) {
+    if (String(dados[i][0]).trim().toLowerCase() === String(u).trim().toLowerCase() && String(dados[i][1]).trim() === String(s).trim()) {
+      return retornarJSON({"sucesso": true, "versao_backend": "v7"});
+    }
+  }
+  return retornarJSON({"sucesso": false});
+}
+
+function buscarInicial() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var colaboradores = [];
+  var dColab = getDadosAbaSeguro(ss, "Colaboradores");
+  for (var i = 1; i < dColab.length; i++) {
+    if (dColab[i][1] && !dColab[i][5]) { 
+      var nomePadrao = String(dColab[i][1]).trim().toUpperCase().replace(/\s+/g, ' ');
+      colaboradores.push({ matricula: dColab[i][0], nome: nomePadrao, funcao: dColab[i][2], setor: dColab[i][3], admissao: formatarData(dColab[i][4]) });
+    }
+  }
+
+  var epis = [];
+  var dEpis = getDadosAbaSeguro(ss, "EPIs");
+  for (var i = 1; i < dEpis.length; i++) { if (dEpis[i][0]) epis.push(String(dEpis[i][0]).trim()); }
+
+  var validades = [];
+  var dVal = getDadosAbaSeguro(ss, "Validade EPIs");
+  for (var i = 1; i < dVal.length; i++) {
+    if (dVal[i][1]) validades.push({ epi: String(dVal[i][1]).trim(), funcao: dVal[i][2], dias: dVal[i][3], qtd: dVal[i][4] });
+  }
+
+  var estoqueMap = {};
+  epis.forEach(function(e) { estoqueMap[e] = { epi: e, entradas: 0, saidas: 0, saldo: 0 }; });
+
+  var dEntradas = getDadosAbaSeguro(ss, "Entrada Estoque");
+  for (var i = 1; i < dEntradas.length; i++) {
+    var nomeEpi = String(dEntradas[i][2]).trim(); var qtd = parseFloat(dEntradas[i][3]) || 0;
+    if (estoqueMap[nomeEpi]) { estoqueMap[nomeEpi].entradas += qtd; estoqueMap[nomeEpi].saldo += qtd; }
+  }
+
+  var dItens = getDadosAbaSeguro(ss, "Itens da Entrega");
+  for (var i = 1; i < dItens.length; i++) {
+    var nomeEpi = String(dItens[i][2]).trim(); var qtd = parseFloat(dItens[i][3]) || 0;
+    if (estoqueMap[nomeEpi]) { estoqueMap[nomeEpi].saidas += qtd; estoqueMap[nomeEpi].saldo -= qtd; }
+  }
+  var estoqueFinal = Object.keys(estoqueMap).map(function(k){ return estoqueMap[k]; });
+
+  var dEntrega = getDadosAbaSeguro(ss, "Entregas de EPI");
+  var fichas = {};
+  var mapEntregas = {};
+  
+  for(var e = 1; e < dEntrega.length; e++){
+    mapEntregas[String(dEntrega[e][0]).trim()] = { data: formatarData(dEntrega[e][1]), ass: dEntrega[e][5], fot: dEntrega[e][6] };
+  }
+
+  for(var j = 1; j < dItens.length; j++){
+    var idEntrega = String(dItens[j][1]).trim();
+    var colabNome = "";
+    for(var k=1; k<dEntrega.length; k++){ 
+      if(String(dEntrega[k][0]).trim() === idEntrega){ colabNome = String(dEntrega[k][2]).trim().toUpperCase().replace(/\s+/g, ' '); break; } 
+    }
+    
+    if(colabNome) {
+      if(!fichas[colabNome]) fichas[colabNome] = [];
+      fichas[colabNome].push({
+        data: mapEntregas[idEntrega] ? mapEntregas[idEntrega].data : "",
+        epi: dItens[j][2], qtd: dItens[j][3], ca: dItens[j][4], prox_troca: formatarData(dItens[j][6]), prox: formatarData(dItens[j][6]), motivo: dItens[j][7], status: calcularStatusEPI(dItens[j][6])
+      });
+    }
+  }
+
+  for(var chave in fichas) { fichas[chave] = ordenarHistorico(fichas[chave]); }
+  return retornarJSON({ sucesso: true, colaboradores: colaboradores, epis: epis, validades: validades, estoque: estoqueFinal, fichas: fichas });
+}
+
+function calcularStatusEPI(dataTroca) {
+  if(!dataTroca || String(dataTroca).trim() === "") return "N/A";
+  var hj = new Date(); hj.setHours(0,0,0,0);
+  if(dataTroca < hj) return "Vencido";
+  return "Válido";
+}
+
+function salvarEntrega(dados) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var idEntrega = "EPI-" + new Date().getTime();
+  var dataHora = dados.data_hora ? new Date(dados.data_hora) : new Date();
+  
+  var linkFoto = "";
+  if(dados.foto){
+    var pastaFotos = DriveApp.getFolderById(PASTAS.FOTOS);
+    var bytes = Utilities.base64Decode(dados.foto.split(',')[1]);
+    var blob = Utilities.newBlob(bytes, 'image/jpeg', "Foto_" + dados.colaborador + "_" + dataHora.getTime() + ".jpg");
+    var file = pastaFotos.createFile(blob); file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    linkFoto = file.getUrl();
+  }
+
+  var abaEntrega = ss.getSheetByName("Entregas de EPI");
+  if(!abaEntrega) { abaEntrega = ss.insertSheet("Entregas de EPI"); abaEntrega.appendRow(["ID da Entrega", "Data e Hora", "Nome do Colaborador", "Função", "Setor", "Assinatura", "Foto do Recebimento"]); }
+  abaEntrega.appendRow([idEntrega, dataHora, dados.colaborador, dados.funcao, dados.setor, dados.assinatura, linkFoto]);
+
+  var abaItens = ss.getSheetByName("Itens da Entrega");
+  if(!abaItens) { abaItens = ss.insertSheet("Itens da Entrega"); abaItens.appendRow(["ID do Item", "ID da Entrega", "EPI Entregue", "Quantidade", "C.A.", "Duração", "Próxima Troca", "Motivo", "Alerta Desativado?"]); }
+  
+  dados.itens.forEach(function(item, idx){
+    var idItem = idEntrega + "-" + (idx+1);
+    var pTroca = "";
+    var numDias = parseInt(item.duracao) || 0;
+    if(numDias > 0) {
+      var d = new Date(dataHora); d.setDate(d.getDate() + numDias);
+      pTroca = Utilities.formatDate(d, "GMT-03:00", "dd/MM/yyyy");
+    }
+    abaItens.appendRow([idItem, idEntrega, item.epi, item.qtd, item.ca, (numDias > 0 ? numDias + " dias" : "-"), pTroca, item.motivo, false]);
+  });
+
+  SpreadsheetApp.flush();
+  var linkPDF = gerarFichaPDF(dados.colaborador, dados.matricula, dados.admissao, dados.funcao, dados.setor, ss);
+  return retornarJSON({sucesso: true, pdf: linkPDF});
+}
+
+function gerarFichaPDF(colab, matricula, admissao, funcao, setor, ss) {
+  var setorTratado = String(setor).trim().toUpperCase();
+  var folderId = PASTAS[setorTratado] || PASTAS["ADM"]; 
+  var pastaPDF = DriveApp.getFolderById(folderId);
+  
+  var historico = [];
+  var dEntrega = getDadosAbaSeguro(ss, "Entregas de EPI");
+  var dItens = getDadosAbaSeguro(ss, "Itens da Entrega");
+  var colabPadrao = String(colab).trim().toUpperCase().replace(/\s+/g, ' ');
+  
+  for(var i=1; i<dEntrega.length; i++){
+    if(String(dEntrega[i][2]).trim().toUpperCase().replace(/\s+/g, ' ') === colabPadrao){
+      var idEnt = String(dEntrega[i][0]).trim();
+      var dt = formatarData(dEntrega[i][1]);
+      var ass = dEntrega[i][5];
+      var ft = dEntrega[i][6];
+      
+      for(var j=1; j<dItens.length; j++){
+        if(String(dItens[j][1]).trim() === idEnt){
+          historico.push({ data: dt, epi: dItens[j][2], ca: dItens[j][4], qtd: dItens[j][3], dur: dItens[j][5], prox: formatarData(dItens[j][6]), mot: dItens[j][7], ass: ass, fot: ft });
+        }
+      }
+    }
+  }
+  historico = ordenarHistorico(historico);
+
+  var linhasTable = "";
+  historico.forEach(function(h){
+    var imgAss = h.ass ? `<img src="${h.ass}" style="height:35px;"/>` : "";
+    var urlFot = urlDiretaDrive(h.fot);
+    var imgFot = urlFot ? `<img src="${urlFot}" style="height:45px; border-radius:4px;"/>` : "-";
+    
+    linhasTable += `<tr style="border-bottom: 1px solid #000;">
+      <td style="padding: 4px; border-right: 1px solid #000; font-weight: bold;">${h.data}</td>
+      <td style="padding: 4px; border-right: 1px solid #000;">${h.epi}</td>
+      <td style="padding: 4px; border-right: 1px solid #000;">${h.ca}</td>
+      <td style="padding: 4px; border-right: 1px solid #000;">${h.qtd}</td>
+      <td style="padding: 4px; border-right: 1px solid #000;">${h.dur}</td>
+      <td style="padding: 4px; border-right: 1px solid #000;">${h.prox}</td>
+      <td style="padding: 4px; border-right: 1px solid #000;">${h.mot}</td>
+      <td style="padding: 4px; border-right: 1px solid #000;">${imgAss}</td>
+      <td style="padding: 4px;">${imgFot}</td>
+    </tr>`;
+  });
+
+  // HTML DO PDF DE EPI (PADRÃO IMAGEM 2)
+  var html = `
+  <html>
+  <head>
     <style>
-        /* DESIGN MODERNO E PREMIUM */
-        :root {
-            --cor-primaria: #1a4d2e;
-            --cor-primaria-hover: #133a22;
-            --cor-fundo: #eef2f5;
-            --cor-card: #ffffff;
-            --cor-borda: #ced4da;
-            --cor-texto: #333333;
-            --cor-label: #6c757d;
-        }
-
-        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: var(--cor-fundo); margin: 0; display: flex; flex-direction: column; align-items: center; color: var(--cor-texto); }
-        .app-container { width: 100%; max-width: 500px; padding: 20px; box-sizing: border-box; }
-        .logo { width: 100%; max-width: 220px; display: block; margin: 0 auto 10px auto; filter: drop-shadow(0px 4px 4px rgba(0,0,0,0.1)); }
-        .desenvolvedor { text-align: center; font-size: 11px; color: #888; margin-top: -5px; margin-bottom: 25px; letter-spacing: 0.5px; }
-        
-        .card { background: var(--cor-card); padding: 25px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); margin-bottom: 20px; border: 1px solid rgba(0,0,0,0.02); }
-        h2, h3, h4 { color: var(--cor-primaria); text-align: center; margin-top: 0; font-weight: 700; }
-        h4 { margin-top: 20px; padding-bottom: 10px; border-bottom: 2px solid #e9ecef; }
-        
-        .info-label { font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--cor-label); display: block; margin-bottom: 6px; margin-top: 12px; }
-        
-        .input-campo, select { width: 100%; padding: 14px; margin-bottom: 10px; border: 2px solid var(--cor-borda); border-radius: 10px; box-sizing: border-box; font-size: 15px; background-color: #f8f9fa; color: var(--cor-texto); transition: all 0.3s ease; font-weight: 500; }
-        .input-campo:focus, select:focus { border-color: var(--cor-primaria); outline: none; background-color: #fff; box-shadow: 0 0 0 3px rgba(26, 77, 46, 0.15); }
-        .input-campo:read-only { background-color: #e9ecef; color: #495057; cursor: not-allowed; }
-        
-        .btn-principal { background: linear-gradient(135deg, var(--cor-primaria), var(--cor-primaria-hover)); color: white; border: none; border-radius: 10px; padding: 16px; font-size: 16px; font-weight: 700; width: 100%; cursor: pointer; margin-bottom: 10px; box-shadow: 0 4px 15px rgba(26, 77, 46, 0.2); transition: transform 0.2s, box-shadow 0.2s; text-transform: uppercase; letter-spacing: 1px; }
-        .btn-principal:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(26, 77, 46, 0.3); }
-        .btn-principal:disabled { background: #adb5bd; cursor: not-allowed; box-shadow: none; transform: none; }
-        
-        .btn-secundario { background: #6c757d; color: white; border: none; border-radius: 10px; padding: 14px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 15px; transition: background 0.3s; }
-        .btn-secundario:hover { background: #5a6268; }
-        
-        .btn-sucesso { background: linear-gradient(135deg, #28a745, #218838); color: white; border: none; border-radius: 10px; padding: 14px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(40, 167, 69, 0.2); transition: transform 0.2s; }
-        .btn-sucesso:hover { transform: translateY(-2px); }
-
-        .btn-pdf { background: linear-gradient(135deg, #0b5394, #083c6b); color: white; border: none; border-radius: 10px; padding: 14px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(11, 83, 148, 0.2); transition: transform 0.2s; }
-        .btn-pdf:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(11, 83, 148, 0.3); }
-
-        .linha-item { border: 2px dashed #dee2e6; padding: 15px; border-radius: 12px; margin-bottom: 15px; background: #ffffff; position: relative; transition: border-color 0.3s; }
-        .linha-item:hover { border-color: var(--cor-primaria); }
-        .btn-remover { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 11px; font-weight: bold; transition: background 0.3s; }
-        .btn-remover:hover { background: #c82333; }
-        
-        canvas { border: 2px dashed var(--cor-primaria); background: #f8f9fa; width: 100%; height: 140px; border-radius: 12px; touch-action: none; margin-bottom: 10px; cursor: crosshair; }
-        
-        table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; margin-top: 10px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        th, td { border-bottom: 1px solid #dee2e6; padding: 10px; text-align: center; background: #fff; }
-        th { background-color: var(--cor-primaria); color: white; font-weight: 600; text-transform: uppercase; font-size: 11px; }
-        .status-valido { color: #28a745; font-weight: 700; background: #e8f5e9; padding: 4px 8px; border-radius: 4px; } 
-        .status-vencido { color: #dc3545; font-weight: 700; background: #fbe9e7; padding: 4px 8px; border-radius: 4px; }
+      @page { margin: 20px; @bottom-right { content: counter(page); font-family: Arial; font-size: 10px; font-weight: bold; } }
+      body { font-family: 'Arial', sans-serif; color: #000; font-size: 9px; margin: 10px; }
+      .green-bar { background-color: #1a4d2e; height: 12px; width: 100%; margin: 5px 0; }
+      .header-table { width: 100%; text-align: center; font-weight: bold; margin-bottom: 5px; }
+      .header-table td { vertical-align: middle; }
+      .title-text { color: #1a4d2e; font-size: 18px; line-height: 1.2; }
+      .info-table { width: 100%; font-size: 10px; font-weight: bold; margin-bottom: 15px; border-collapse: collapse; text-align: center; }
+      .info-table td { padding: 4px; }
+      .label-green { color: #1a4d2e; text-transform: uppercase; }
+      .data-table { width: 100%; border-collapse: collapse; font-size: 9px; text-align: center; border: 1px solid #000; }
+      .data-table th, .data-table td { border: 1px solid #000; padding: 4px; vertical-align: middle; }
+      .data-table th { font-weight: bold; }
+      .footer { text-align: center; font-size: 10px; font-weight: bold; margin-top: 30px; }
+      .footer-red { color: red; font-weight: normal; }
     </style>
-</head>
-<body>
+  </head>
+  <body>
+    <div class="green-bar"></div>
+    <table class="header-table">
+      <tr>
+        <td style="width: 25%; text-align: left;"><img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" style="width: 140px;"></td>
+        <td style="width: 50%;"><div class="title-text">CONTROLE DE<br>ENTREGA DOS EPIS</div></td>
+        <td style="width: 25%; text-align: right;">
+          <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Heineken_logo.svg/512px-Heineken_logo.svg.png" style="width: 120px;"><br>
+          <span style="font-size: 8px; color: #555;">REVENDEDOR AUTORIZADO</span>
+        </td>
+      </tr>
+    </table>
+    <div class="green-bar"></div>
 
-    <!-- LISTA OCULTA PARA O C.A. -->
-    <datalist id="opcoes-ca"><option value="N/A"></option></datalist>
+    <table class="info-table">
+      <tr>
+        <td class="label-green" style="text-align: left; width: 10%;">NOME</td>
+        <td colspan="3" style="text-align: center;">${colab}</td>
+        <td class="label-green" style="text-align: right; width: 15%;">ADMISSÃO</td>
+        <td style="text-align: right; width: 15%;">${admissao}</td>
+      </tr>
+      <tr>
+        <td class="label-green" style="text-align: left;">FUNÇÃO</td>
+        <td style="text-align: left;">${funcao}</td>
+        <td class="label-green" style="text-align: center;">SETOR</td>
+        <td style="text-align: left;">${setor}</td>
+        <td class="label-green" style="text-align: right;">MATRÍCULA</td>
+        <td style="text-align: right;">${matricula}</td>
+      </tr>
+    </table>
 
-    <!-- TELA LOGIN -->
-    <div id="tela-login" class="app-container">
-        <div class="card">
-            <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
-            <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
-            
-            <h2>SISTEMA RH</h2>
-            <label class="info-label">Acesso Restrito</label>
-            <input type="text" id="campo-usuario" class="input-campo" placeholder="Usuário">
-            <input type="password" id="campo-senha" class="input-campo" placeholder="Senha">
-            <button class="btn-principal" onclick="fazerLogin()">Acessar Sistema</button>
-        </div>
+    <table class="data-table">
+      <tr>
+        <th>Data e Hora</th><th>EPI Entregue</th><th>C.A.</th><th>Quantidade</th><th>Duração</th><th>Próxima troca</th><th>Motivo</th><th>Assinatura</th><th>Foto de Recebimento</th>
+      </tr>
+      ${linhasTable}
+    </table>
+
+    <div class="footer">
+      Lince Distribuidora de Bebidas<br>
+      Rua: Pedro Merline, 295, Quinta da colina – Jaú/SP<br>
+      Contato 14 3626-4101<br>
+      <span class="footer-red">Cópia Controlada – Proibido a reprodução</span>
     </div>
+  </body>
+  </html>`;
 
-    <!-- TELA MENU -->
-    <div id="tela-menu" class="app-container" style="display: none;">
-        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
-        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+  var nomeArquivo = colab.trim() + ".pdf";
+  var blob = Utilities.newBlob(html, MimeType.HTML).getAs(MimeType.PDF);
+  blob.setName(nomeArquivo);
+  
+  var arquivosAntigos = pastaPDF.getFilesByName(nomeArquivo);
+  while (arquivosAntigos.hasNext()) { arquivosAntigos.next().setTrashed(true); }
 
-        <div class="card">
-            <h2>MENU PRINCIPAL</h2>
-            <button class="btn-principal" onclick="abrirTelaEntrega()">👷 Entrega de EPIs</button>
-            <button class="btn-principal" onclick="abrirTela('tela-consulta')">🔍 Consulta Histórico</button>
-            <button class="btn-principal" onclick="abrirTela('tela-cadastro-colab')">👤 Cadastrar Colaborador</button>
-            <button class="btn-principal" onclick="abrirTela('tela-estoque')">📦 Estoque & Compras</button>
-            <button class="btn-secundario" style="margin-bottom:0; margin-top: 10px;" onclick="location.reload()">Sair do Sistema</button>
-        </div>
-    </div>
+  var file = pastaPDF.createFile(blob); 
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return file.getUrl();
+}
 
-    <!-- TELA ENTREGA -->
-    <div id="tela-entrega" class="app-container" style="display: none;">
-        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
-        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+function salvarEntradaEstoque(dados) {
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Entrada Estoque");
+  if(!aba) { aba = SpreadsheetApp.getActiveSpreadsheet().insertSheet("Entrada Estoque"); aba.appendRow(["ID Entrada", "Data", "EPI", "Quantidade", "Nota Fiscal/Fornecedor"]); }
+  var id = "ENT-" + new Date().getTime();
+  aba.appendRow([id, new Date(), dados.epi, dados.qtd, dados.nf]);
+  return retornarJSON({sucesso: true});
+}
 
-        <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar ao Menu</button>
-        <div class="card">
-            <h3>NOVA ENTREGA DE EPI</h3>
-            
-            <label class="info-label">Data e Hora da Entrega:</label>
-            <input type="datetime-local" id="ent-data" class="input-campo" onchange="recalcularTodasAsValidades()">
+function gerarPdfEstoque() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var pastaEstoque = DriveApp.getFolderById(PASTAS.ESTOQUE);
+    
+    var epis = [];
+    var dEpis = getDadosAbaSeguro(ss, "EPIs");
+    for (var i = 1; i < dEpis.length; i++) { if (dEpis[i][0]) epis.push(String(dEpis[i][0]).trim()); }
 
-            <label class="info-label">Busque o Colaborador:</label>
-            <input type="text" id="busca-ent-colab" class="input-campo" placeholder="🔍 Digite para filtrar nomes..." onkeyup="filtrarColab(this.value, 'ent-colab')">
-            <select id="ent-colab" class="input-campo" onchange="preencherDadosColab()"></select>
-            
-            <input type="hidden" id="ent-funcao"><input type="hidden" id="ent-setor"><input type="hidden" id="ent-admissao"><input type="hidden" id="ent-matricula">
-            
-            <h4>ITENS DA ENTREGA</h4>
-            <div id="container-itens-epi"></div>
-            <button class="btn-sucesso" onclick="adicionarItemEPI()">➕ Adicionar EPI à Ficha</button>
-            
-            <h4>COMPROVAÇÃO</h4>
-            <label class="info-label">Foto do Recebimento (Câmera ou Arquivo):</label>
-            <input type="file" id="ent-foto" accept="image/*" capture="environment" class="input-campo" onchange="processarFoto(this)">
-            
-            <label class="info-label">Assinatura do Colaborador: *</label>
-            <canvas id="canvas-ass"></canvas>
-            <button class="btn-secundario" style="padding:8px;" onclick="limparPad()">🧹 Limpar Assinatura</button>
-            
-            <button class="btn-principal" id="btn-salvar-entrega" style="margin-top: 15px;" onclick="salvarEntrega()">💾 Finalizar e Gerar PDF</button>
-        </div>
-    </div>
+    var estoqueMap = {};
+    epis.forEach(function(e) { estoqueMap[e] = { epi: e, entradas: 0, saidas: 0, saldo: 0 }; });
 
-    <!-- TELA CONSULTA -->
-    <div id="tela-consulta" class="app-container" style="display: none;">
-        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
-        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+    var dEntradas = getDadosAbaSeguro(ss, "Entrada Estoque");
+    for (var i = 1; i < dEntradas.length; i++) {
+      var nomeEpi = String(dEntradas[i][2]).trim(); var qtd = parseFloat(dEntradas[i][3]) || 0;
+      if (estoqueMap[nomeEpi]) { estoqueMap[nomeEpi].entradas += qtd; estoqueMap[nomeEpi].saldo += qtd; }
+    }
 
-        <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar ao Menu</button>
-        <div class="card">
-            <h3>CONSULTAR HISTÓRICO</h3>
-            <label class="info-label">Busque o Colaborador:</label>
-            <input type="text" id="busca-cons-colab" class="input-campo" placeholder="🔍 Digite para filtrar..." onkeyup="filtrarColab(this.value, 'cons-colab')">
-            <select id="cons-colab" class="input-campo" onchange="carregarFichaColab()"></select>
-            
-            <div id="resultado-ficha" style="overflow-x: auto;"></div>
-        </div>
-    </div>
+    var dItens = getDadosAbaSeguro(ss, "Itens da Entrega");
+    for (var i = 1; i < dItens.length; i++) {
+      var nomeEpi = String(dItens[i][2]).trim(); var qtd = parseFloat(dItens[i][3]) || 0;
+      if (estoqueMap[nomeEpi]) { estoqueMap[nomeEpi].saidas += qtd; estoqueMap[nomeEpi].saldo -= qtd; }
+    }
+    
+    var estoqueFinal = Object.keys(estoqueMap).map(function(k){ return estoqueMap[k]; });
+    
+    var linhasTable = "";
+    estoqueFinal.forEach(function(e){
+      linhasTable += `<tr style="border-bottom: 1px solid #000;">
+        <td style="padding: 6px; border-right: 1px solid #000; text-align:left;">${e.epi}</td>
+        <td style="padding: 6px; border-right: 1px solid #000;">${e.entradas}</td>
+        <td style="padding: 6px; border-right: 1px solid #000;">${e.saidas}</td>
+        <td style="padding: 6px; font-weight: bold;">${e.saldo}</td>
+      </tr>`;
+    });
 
-    <!-- TELA CADASTRO COLAB -->
-    <div id="tela-cadastro-colab" class="app-container" style="display: none;">
-        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
-        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+    var dataHoje = Utilities.formatDate(new Date(), "GMT-03:00", "dd/MM/yyyy HH:mm");
 
-        <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar ao Menu</button>
-        <div class="card">
-            <h3>CADASTRAR COLABORADOR</h3>
-            <label class="info-label">Matrícula:</label>
-            <input type="text" id="cad-mat" class="input-campo" placeholder="Ex: 1542">
-            <label class="info-label">Nome Completo:</label>
-            <input type="text" id="cad-nome" class="input-campo" placeholder="Nome sem abreviações">
-            <label class="info-label">Função / Cargo:</label>
-            <input type="text" id="cad-func" class="input-campo" placeholder="Ex: MOTORISTA">
-            <label class="info-label">Setor:</label>
-            <select id="cad-setor" class="input-campo">
-                <option value="">Selecione o Setor...</option>
-                <option value="ADM">ADMINISTRATIVO</option>
-                <option value="COMERCIAL">COMERCIAL</option>
-                <option value="LOGÍSTICA">LOGÍSTICA</option>
-                <option value="OPERACIONAL">OPERACIONAL</option>
-                <option value="PUXADA">PUXADA</option>
-            </select>
-            <label class="info-label">Data de Admissão:</label>
-            <input type="date" id="cad-adm" class="input-campo">
-            <button class="btn-principal" onclick="salvarNovoColab()">Cadastrar no Sistema</button>
-        </div>
-    </div>
+    // HTML DO PDF DE ESTOQUE
+    var html = `
+    <html>
+    <head>
+      <style>
+        @page { margin: 20px; @bottom-right { content: counter(page); font-family: Arial; font-size: 10px; font-weight: bold; } }
+        body { font-family: 'Arial', sans-serif; color: #000; font-size: 10px; margin: 20px; }
+        .green-bar { background-color: #1a4d2e; height: 15px; width: 100%; margin: 5px 0; }
+        .header-table { width: 100%; text-align: center; font-weight: bold; margin-bottom: 5px; }
+        .header-table td { vertical-align: middle; }
+        .title-text { color: #1a4d2e; font-size: 18px; line-height: 1.2; }
+        .data-table { width: 100%; border-collapse: collapse; font-size: 10px; text-align: center; border: 1px solid #000; margin-top: 20px;}
+        .data-table th, .data-table td { border: 1px solid #000; padding: 6px; vertical-align: middle; }
+        .data-table th { background-color: #f1f8f5; color: #1a4d2e; font-weight: bold; text-transform: uppercase; }
+        .footer { text-align: center; font-size: 10px; font-weight: bold; margin-top: 30px; }
+        .footer-red { color: red; font-weight: normal; }
+      </style>
+    </head>
+    <body>
+      <div class="green-bar"></div>
+      <table class="header-table">
+        <tr>
+          <td style="width: 30%; text-align: left;"><img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" style="width: 140px;"></td>
+          <td style="width: 40%;"><div class="title-text">RELATÓRIO DE<br>POSIÇÃO DE ESTOQUE</div></td>
+          <td style="width: 30%; text-align: right;">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/2/24/Heineken_logo.svg/512px-Heineken_logo.svg.png" style="width: 120px;"><br>
+            <span style="font-size: 8px; color: #555;">GERADO EM: ${dataHoje}</span>
+          </td>
+        </tr>
+      </table>
+      <div class="green-bar"></div>
 
-    <!-- TELA ESTOQUE -->
-    <div id="tela-estoque" class="app-container" style="display: none;">
-        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
-        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+      <table class="data-table">
+        <tr><th style="width:55%;">EPI</th><th>ENTRADAS</th><th>SAÍDAS</th><th>SALDO ATUAL</th></tr>
+        ${linhasTable}
+      </table>
 
-        <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar ao Menu</button>
-        
-        <div class="card">
-            <h3>📥 LANÇAR COMPRA (ENTRADA)</h3>
-            <label class="info-label">EPI Adquirido:</label>
-            <select id="est-epi" class="input-campo"></select>
-            <div style="display:flex; gap:10px;">
-                <div style="flex:1;">
-                    <label class="info-label">Quantidade:</label>
-                    <input type="number" id="est-qtd" class="input-campo" placeholder="Ex: 10">
-                </div>
-                <div style="flex:2;">
-                    <label class="info-label">NF / Fornecedor:</label>
-                    <input type="text" id="est-nf" class="input-campo" placeholder="Nº da Nota">
-                </div>
-            </div>
-            <button class="btn-principal" onclick="salvarEntrada()">Registrar Entrada</button>
-        </div>
+      <div class="footer">
+        Lince Distribuidora de Bebidas<br>
+        Rua: Pedro Merline, 295, Quinta da colina – Jaú/SP<br>
+        Contato 14 3626-4101<br>
+        <span class="footer-red">Documento Gerado Eletronicamente</span>
+      </div>
+    </body>
+    </html>`;
 
-        <div class="card">
-            <h3>📦 SALDO ATUAL DE EPIS</h3>
-            <button class="btn-pdf" id="btn-pdf-estoque" onclick="gerarRelatorioEstoque()">📄 Gerar PDF do Estoque</button>
-            <div id="tabela-estoque" style="overflow-x: auto;"></div>
-        </div>
-    </div>
+    var nomeArquivo = "Posicao_Estoque_" + Utilities.formatDate(new Date(), "GMT-03:00", "dd-MM-yyyy") + ".pdf";
+    var blob = Utilities.newBlob(html, MimeType.HTML).getAs(MimeType.PDF);
+    blob.setName(nomeArquivo);
 
-    <script>
-        const API_URL = "https://script.google.com/macros/s/AKfycbzO0b-B8n4grYA7GmyiL9AwFinaJTVll9TldFvDOFBhRS9xFAJu9TG-lC6lwN20X7pBQQ/exec";
-        
-        let bd = {}; let itemCount = 0; let b64Foto = ""; let isDrawing = false; let ctx;
-        window.statusEpiAtual = {}; 
+    var file = pastaEstoque.createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return retornarJSON({sucesso: true, pdf: file.getUrl()});
+  } catch(e) {
+    return retornarJSON({sucesso: false, erro: e.message});
+  }
+}
 
-        async function fazerLogin() {
-            let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
-            if(!u || !s) return alert("Preencha Usuário e Senha para continuar!");
-            let btn = document.querySelector('#tela-login .btn-principal');
-            btn.innerText = "Conectando e Baixando Dados... ⏳";
-            
-            try {
-                let r = await fetch(`${API_URL}?acao=login&usuario=${u}&senha=${s}`); 
-                let d = await r.json();
-                
-                if(d.sucesso){
-                    if(d.versao_backend !== "v7") {
-                        alert("❌ ERRO CRÍTICO: Seu código na nuvem não está na Versão V7. Por favor, implante novamente no Apps Script.");
-                        btn.innerText = "Acessar Sistema"; return;
-                    }
-                    window.usuarioLogado = u; 
-                    let r2 = await fetch(`${API_URL}?acao=buscar_inicial`); 
-                    bd = await r2.json();
-                    if(bd.sucesso) {
-                        popularListas(); abrirTela('tela-menu'); initPad();
-                    } else {
-                        alert("Erro ao ler dados da planilha:\n" + bd.erro);
-                    }
-                } else { 
-                    alert("Acesso Negado: " + (d.erro || "Usuário ou Senha incorretos!")); 
-                }
-            } catch(e) { 
-                alert("❌ BLOQUEIO DE REDE (CORS)\n\nO Google bloqueou a conexão. Verifique se o Link está correto e se o acesso está como 'Qualquer pessoa'.\n\nDetalhe técnico: " + e.message); 
-            }
-            btn.innerText = "Acessar Sistema";
-        }
+function cadastrarColaborador(dados) {
+  var aba = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Colaboradores");
+  if(!aba) { aba = SpreadsheetApp.getActiveSpreadsheet().insertSheet("Colaboradores"); }
+  aba.appendRow([dados.matricula, dados.nome, dados.funcao, dados.setor, dados.admissao, ""]);
+  return retornarJSON({sucesso: true});
+}
 
-        function abrirTela(id) { document.querySelectorAll('.app-container').forEach(t => t.style.display = 'none'); document.getElementById(id).style.display = 'block'; }
-        
-        function abrirTelaEntrega() {
-            abrirTela('tela-entrega');
-            let n = new Date(); let hL = new Date(n.getTime() - (n.getTimezoneOffset() * 60000)).toISOString().slice(0,16);
-            document.getElementById('ent-data').value = hL;
-            document.getElementById('container-itens-epi').innerHTML = ""; 
-            itemCount = 0;
-            document.getElementById('ent-colab').value = "";
-            document.getElementById('ent-funcao').value = "";
-        }
-
-        function popularListas() {
-            filtrarColab('', 'ent-colab');
-            filtrarColab('', 'cons-colab');
-
-            let optEPI = '<option value="">Selecione o EPI...</option>';
-            bd.epis.sort().forEach(e => optEPI += `<option value="${e}">${e}</option>`);
-            document.getElementById('est-epi').innerHTML = optEPI;
-
-            let htmlEst = "<table><tr><th>EPI</th><th>ENTRADA</th><th>SAÍDA</th><th>SALDO FINAL</th></tr>";
-            bd.estoque.forEach(e => { htmlEst += `<tr><td>${e.epi}</td><td>${e.entradas}</td><td>${e.saidas}</td><td><b>${e.saldo}</b></td></tr>`; });
-            document.getElementById('tabela-estoque').innerHTML = htmlEst + "</table>";
-        }
-
-        function filtrarColab(texto, selectId) {
-            let select = document.getElementById(selectId);
-            let options = '<option value="">Selecione o Colaborador...</option>';
-            bd.colaboradores.sort((a,b) => a.nome.localeCompare(b.nome)).forEach(c => {
-                if(c.nome.toLowerCase().includes(texto.toLowerCase())) {
-                    options += `<option value="${c.nome}">${c.nome} - ${c.funcao}</option>`;
-                }
-            });
-            select.innerHTML = options;
-            
-            if(selectId === 'ent-colab') preencherDadosColab();
-            if(selectId === 'cons-colab') carregarFichaColab();
-        }
-
-        function getEpiBadge(epiName) {
-            let epiKey = String(epiName).trim().toUpperCase();
-            let proxTrocaStr = window.statusEpiAtual[epiKey];
-
-            if (!proxTrocaStr) return "⚪ Nunca entregue";
-            if (proxTrocaStr === "---" || proxTrocaStr === "N/A") return "🟢 Válido (S/ Validade)";
-
-            let p = proxTrocaStr.split('/');
-            if(p.length === 3) {
-                let dTroca = new Date(p[2], p[1]-1, p[0]).getTime();
-                let hj = new Date(); hj.setHours(0,0,0,0);
-                let diffDias = Math.ceil((dTroca - hj.getTime()) / (1000 * 3600 * 24));
-
-                if (diffDias < 0) return `🔴 Vencido (${Math.abs(diffDias)} dias)`;
-                if (diffDias <= 15) return `🟡 Vence em ${diffDias} dias`;
-                return `🟢 Válido (${diffDias} dias restantes)`;
-            }
-            return "⚪ Status Desconhecido";
-        }
-
-        function gerarOpcoesEpiAgrupadas(selectAtual) {
-            let funcAtual = document.getElementById('ent-funcao').value;
-            if (!funcAtual) return '<option value="">Selecione o Colaborador primeiro...</option>';
-
-            let episSelecionados = [];
-            document.querySelectorAll('.sel-epi').forEach(sel => {
-                if(sel !== selectAtual && sel.value) episSelecionados.push(String(sel.value).trim().toUpperCase());
-            });
-
-            let episDaFuncao = bd.validades.filter(v => String(v.funcao).trim().toUpperCase() === String(funcAtual).trim().toUpperCase());
-            let nomesEpisDaFuncao = episDaFuncao.map(v => String(v.epi).trim().toUpperCase());
-
-            let optFuncao = '<optgroup label="⭐ OBRIGATÓRIOS DA FUNÇÃO">';
-            let optOutros = '<optgroup label="➕ OUTROS EPIs (Avulsos)">';
-
-            bd.epis.sort().forEach(e => {
-                let eUpper = String(e).trim().toUpperCase();
-                let status = getEpiBadge(e);
-                let checkmark = episSelecionados.includes(eUpper) ? "✅ JÁ NA LISTA | " : "";
-                let textoFinal = `${checkmark}${e} [${status}]`;
-
-                if (nomesEpisDaFuncao.includes(eUpper)) { optFuncao += `<option value="${e}">${textoFinal}</option>`; } 
-                else { optOutros += `<option value="${e}">${textoFinal}</option>`; }
-            });
-
-            optFuncao += '</optgroup>'; optOutros += '</optgroup>';
-            return '<option value="">Selecione o EPI entregue...</option>' + optFuncao + optOutros;
-        }
-
-        function atualizarTodosDropdownsEpi() {
-            document.querySelectorAll('.sel-epi').forEach(sel => {
-                let valorAtual = sel.value; 
-                sel.innerHTML = gerarOpcoesEpiAgrupadas(sel);
-                sel.value = valorAtual; 
-            });
-        }
-
-        function preencherDadosColab() {
-            let nome = document.getElementById('ent-colab').value;
-            let c = bd.colaboradores.find(x => x.nome === nome);
-            
-            if(c){ 
-                document.getElementById('ent-funcao').value = c.funcao; 
-                document.getElementById('ent-setor').value = c.setor; 
-                document.getElementById('ent-admissao').value = c.admissao; 
-                document.getElementById('ent-matricula').value = c.matricula; 
-            } else { 
-                document.getElementById('ent-funcao').value = ""; 
-            }
-            
-            window.statusEpiAtual = {};
-            let cNome = String(nome).trim().toUpperCase().replace(/\s+/g, ' ');
-            let f = bd.fichas[cNome];
-            if(f) {
-                f.forEach(item => { window.statusEpiAtual[String(item.epi).trim().toUpperCase()] = item.prox_troca; });
-            }
-
-            document.getElementById('container-itens-epi').innerHTML = "";
-            itemCount = 0;
-            if(nome) adicionarItemEPI();
-        }
-
-        function adicionarItemEPI() {
-            let colabAtual = document.getElementById('ent-colab').value;
-            if(!colabAtual) return alert("❌ Selecione o Colaborador primeiro!");
-
-            itemCount++;
-            let div = document.createElement('div'); div.className = "linha-item"; div.id = "item-" + itemCount;
-            let opcoesDinamicas = gerarOpcoesEpiAgrupadas();
-            
-            div.innerHTML = `
-                <button class="btn-remover" onclick="removerItemEPI(this)">Remover</button>
-                <span class="info-label" style="color:var(--cor-primaria); font-size:14px;">EPI #${itemCount}</span>
-                
-                <label class="info-label">EPI Entregue:</label>
-                <select class="input-campo sel-epi" onchange="aoMudarEpi(this)">${opcoesDinamicas}</select>
-                
-                <div style="display:flex; gap:10px;">
-                    <div style="flex:1;">
-                        <label class="info-label">Quantidade:</label>
-                        <input type="number" class="input-campo sel-qtd" value="1" min="1">
-                    </div>
-                    <div style="flex:2;">
-                        <label class="info-label">C.A. (Ex: 12345 ou N/A):</label>
-                        <input type="text" class="input-campo sel-ca" list="opcoes-ca" placeholder="Nº do C.A.">
-                    </div>
-                </div>
-                
-                <div style="display:flex; gap:10px;">
-                    <div style="flex:1;">
-                        <label class="info-label">Duração (Dias):</label>
-                        <input type="number" class="input-campo sel-duracao" oninput="recalcularTrocaManual(this)" placeholder="Ex: 90" readonly>
-                    </div>
-                    <div style="flex:1;">
-                        <label class="info-label">Próxima Troca:</label>
-                        <input type="text" class="input-campo sel-proxtroca" readonly style="background:#e9ecef; text-align:center;" value="---">
-                    </div>
-                </div>
-
-                <label class="info-label">Motivo da Entrega:</label>
-                <select class="input-campo sel-motivo">
-                    <option value="">Selecione o motivo...</option>
-                    <option>1ª Entrega</option>
-                    <option>Troca por Desgaste</option>
-                    <option>Perda/Dano</option>
-                    <option>Extensão do Prazo</option>
-                </select>
-            `;
-            document.getElementById('container-itens-epi').appendChild(div);
-            atualizarTodosDropdownsEpi();
-        }
-
-        function aoMudarEpi(selectEl) {
-            buscarValidade(selectEl);
-            atualizarTodosDropdownsEpi();
-        }
-
-        function removerItemEPI(btn) {
-            btn.closest('.linha-item').remove();
-            atualizarTodosDropdownsEpi();
-        }
-
-        function recalcularTodasAsValidades() {
-            document.querySelectorAll('.sel-duracao').forEach(input => {
-                if(input.value !== "") recalcularTrocaManual(input);
-            });
-        }
-
-        function buscarValidade(selectEl) {
-            let epi = selectEl.value; let func = document.getElementById('ent-funcao').value;
-            let val = bd.validades.find(v => String(v.epi).trim().toUpperCase() === String(epi).trim().toUpperCase() && String(v.funcao).trim().toUpperCase() === String(func).trim().toUpperCase());
-            let box = selectEl.closest('.linha-item');
-            let inputDuracao = box.querySelector('.sel-duracao');
-            
-            if(val) { 
-                inputDuracao.value = val.dias; 
-                inputDuracao.setAttribute('readonly', 'true');
-                inputDuracao.style.backgroundColor = "#e9ecef";
-                box.querySelector('.sel-qtd').value = val.qtd || 1; 
-                recalcularTrocaManual(inputDuracao);
-            }
-            else { 
-                inputDuracao.value = ""; 
-                inputDuracao.removeAttribute('readonly');
-                inputDuracao.style.backgroundColor = "#ffffff";
-                box.querySelector('.sel-proxtroca').value = "---";
-            }
-        }
-
-        function recalcularTrocaManual(inputDuracao) {
-            let box = inputDuracao.closest('.linha-item');
-            let dias = parseInt(inputDuracao.value);
-            let dtInput = document.getElementById('ent-data').value;
-
-            if(dias > 0 && dtInput) {
-                let d = new Date(dtInput);
-                d.setDate(d.getDate() + dias);
-                let dia = String(d.getDate()).padStart(2, '0');
-                let mes = String(d.getMonth() + 1).padStart(2, '0');
-                let ano = d.getFullYear();
-                box.querySelector('.sel-proxtroca').value = `${dia}/${mes}/${ano}`;
-            } else {
-                box.querySelector('.sel-proxtroca').value = "---";
-            }
-        }
-
-        function initPad() {
-            let cvs = document.getElementById('canvas-ass'); ctx = cvs.getContext('2d');
-            const getP = e => { let r = cvs.getBoundingClientRect(); let x = e.touches ? e.touches[0].clientX : e.clientX; let y = e.touches ? e.touches[0].clientY : e.clientY; return { x: (x - r.left)*(cvs.width/r.width), y: (y - r.top)*(cvs.height/r.height) }; };
-            let s = e => { e.preventDefault(); isDrawing = true; let p = getP(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); cvs.setAttribute('d', '1'); };
-            let m = e => { e.preventDefault(); if(isDrawing){ let p = getP(e); ctx.lineTo(p.x, p.y); ctx.stroke(); }};
-            let f = e => { isDrawing = false; };
-            cvs.onmousedown = s; cvs.ontouchstart = s; cvs.onmousemove = m; cvs.ontouchmove = m; cvs.onmouseup = f; cvs.ontouchend = f;
-        }
-        function limparPad() { ctx.clearRect(0,0,300,150); document.getElementById('canvas-ass').removeAttribute('d'); }
-
-        function processarFoto(input) {
-            if (!input.files[0]) return; let r = new FileReader();
-            r.onload = e => { b64Foto = e.target.result; }; r.readAsDataURL(input.files[0]);
-        }
-
-        async function salvarEntrega() {
-            let colab = document.getElementById('ent-colab').value;
-            let dt = document.getElementById('ent-data').value;
-            
-            if(!dt) return alert("❌ A Data e Hora da entrega é obrigatória!");
-            if(!colab) return alert("❌ Selecione o Colaborador na lista!");
-            
-            let blocosDeItens = document.querySelectorAll('.linha-item');
-            if(blocosDeItens.length === 0) return alert("❌ Você precisa adicionar pelo menos um EPI à ficha!");
-            
-            let itens = [];
-            for (let i = 0; i < blocosDeItens.length; i++) {
-                let box = blocosDeItens[i];
-                let epi = box.querySelector('.sel-epi').value;
-                let qtd = box.querySelector('.sel-qtd').value;
-                let ca = box.querySelector('.sel-ca').value;
-                let duracao = box.querySelector('.sel-duracao').value;
-                let motivo = box.querySelector('.sel-motivo').value;
-                
-                let numItem = i + 1;
-                if(!epi) return alert(`❌ Selecione qual é o EPI no Item #${numItem}!`);
-                if(!qtd || qtd <= 0) return alert(`❌ Informe a Quantidade válida no Item #${numItem}!`);
-                if(!ca) return alert(`❌ Preencha o C.A. no Item #${numItem}! (Se não houver, selecione ou digite N/A)`);
-                if(!duracao || duracao <= 0) return alert(`❌ Digite a Duração (em dias) do EPI no Item #${numItem}!`);
-                if(!motivo) return alert(`❌ Selecione o Motivo da entrega no Item #${numItem}!`);
-                
-                itens.push({ epi: epi, qtd: qtd, ca: ca, motivo: motivo, duracao: duracao });
-            }
-
-            if(!document.getElementById('canvas-ass').getAttribute('d')) return alert("❌ A Assinatura do Colaborador é obrigatória!");
-            
-            let p = {
-                acao: "salvar_entrega", colaborador: colab, data_hora: dt,
-                matricula: document.getElementById('ent-matricula').value, admissao: document.getElementById('ent-admissao').value,
-                funcao: document.getElementById('ent-funcao').value, setor: document.getElementById('ent-setor').value,
-                assinatura: document.getElementById('canvas-ass').toDataURL(), foto: b64Foto, itens: itens
-            };
-
-            let btn = document.getElementById('btn-salvar-entrega');
-            btn.innerText = "Enviando e Gerando PDF... ⏳";
-            btn.disabled = true;
-            try {
-                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); let d = await r.json();
-                if(d.sucesso) { 
-                    alert("✅ Entrega salva! O PDF foi gerado no Google Drive."); 
-                    window.open(d.pdf, '_blank'); 
-                    location.reload(); 
-                }
-                else { alert("❌ Erro ao gerar PDF: " + d.erro); }
-            } catch(e) { alert("❌ Erro grave de conexão com a planilha."); }
-            btn.innerText = "💾 Finalizar e Gerar PDF";
-            btn.disabled = false;
-        }
-
-        function carregarFichaColab() {
-            let c = String(document.getElementById('cons-colab').value).trim().toUpperCase().replace(/\s+/g, ' '); 
-            let f = bd.fichas[c];
-            
-            if(!c) { document.getElementById('resultado-ficha').innerHTML = ""; return; }
-            if(!f) return document.getElementById('resultado-ficha').innerHTML = "<p style='text-align:center; margin-top:20px; color:var(--cor-label); font-weight:bold;'>Este colaborador ainda não possui histórico de EPIs.</p>";
-            
-            let html = "<table><tr><th>Data</th><th>EPI</th><th>C.A.</th><th>Troca</th><th>Status</th></tr>";
-            f.forEach(i => {
-                let cl = i.status === "Vencido" ? "status-vencido" : "status-valido";
-                html += `<tr><td>${i.data}</td><td>${i.epi} <b>(${i.qtd})</b></td><td>${i.ca}</td><td>${i.prox_troca}</td><td><span class="${cl}">${i.status}</span></td></tr>`;
-            });
-            document.getElementById('resultado-ficha').innerHTML = html + "</table>";
-        }
-
-        async function salvarNovoColab() {
-            let p = { acao: "cadastrar_colaborador", matricula: document.getElementById('cad-mat').value, nome: document.getElementById('cad-nome').value, funcao: document.getElementById('cad-func').value, setor: document.getElementById('cad-setor').value, admissao: document.getElementById('cad-adm').value };
-            if(!p.nome || !p.setor) return alert("❌ Nome e Setor são obrigatórios!");
-            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("✅ Colaborador cadastrado no sistema!"); location.reload();
-        }
-
-        async function salvarEntrada() {
-            let p = { acao: "salvar_entrada_estoque", epi: document.getElementById('est-epi').value, qtd: document.getElementById('est-qtd').value, nf: document.getElementById('est-nf').value };
-            if(!p.epi || !p.qtd) return alert("❌ Selecione o EPI e digite a Quantidade Comprada!");
-            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("✅ Estoque atualizado com sucesso!"); location.reload();
-        }
-
-        async function gerarRelatorioEstoque() {
-            let btn = document.getElementById('btn-pdf-estoque');
-            btn.innerText = "Gerando PDF... ⏳";
-            btn.disabled = true;
-            try {
-                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({acao: "gerar_pdf_estoque"}) }); 
-                let d = await r.json();
-                if(d.sucesso) { 
-                    alert("✅ Relatório de Estoque gerado no Drive!"); 
-                    window.open(d.pdf, '_blank'); 
-                }
-                else { alert("❌ Erro ao gerar PDF: " + d.erro); }
-            } catch(e) { alert("❌ Erro grave de conexão com a planilha."); }
-            btn.innerText = "📄 Gerar PDF do Estoque";
-            btn.disabled = false;
-        }
-    </script>
-</body>
-</html>
+function getOuCriarPasta(nome) { var pastas = DriveApp.getFoldersByName(nome); return pastas.hasNext() ? pastas.next() : DriveApp.createFolder(nome); }
+function formatarData(valor) { if (!valor || String(valor).trim() === "") return ""; try { if (valor instanceof Date) return Utilities.formatDate(valor, "GMT-03:00", "dd/MM/yyyy"); return valor; } catch (e) { return valor; } }
