@@ -57,7 +57,6 @@
 </head>
 <body>
 
-    <!-- LISTA OCULTA PARA O C.A. -->
     <datalist id="opcoes-ca"><option value="N/A"></option></datalist>
 
     <!-- TELA LOGIN -->
@@ -202,6 +201,7 @@
         const API_URL = "https://script.google.com/macros/s/AKfycbzO0b-B8n4grYA7GmyiL9AwFinaJTVll9TldFvDOFBhRS9xFAJu9TG-lC6lwN20X7pBQQ/exec";
         
         let bd = {}; let itemCount = 0; let b64Foto = ""; let isDrawing = false; let ctx;
+        window.statusEpiAtual = {}; // Guarda o status de vencimento para calcular os semáforos 🚦
 
         async function fazerLogin() {
             let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
@@ -214,10 +214,6 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v6") {
-                        alert("❌ ERRO CRÍTICO: Seu código na nuvem não está na Versão V6. Por favor, implante novamente no Apps Script.");
-                        btn.innerText = "Acessar Sistema"; return;
-                    }
                     window.usuarioLogado = u; 
                     let r2 = await fetch(`${API_URL}?acao=buscar_inicial`); 
                     bd = await r2.json();
@@ -241,8 +237,10 @@
             abrirTela('tela-entrega');
             let n = new Date(); let hL = new Date(n.getTime() - (n.getTimezoneOffset() * 60000)).toISOString().slice(0,16);
             document.getElementById('ent-data').value = hL;
-            document.getElementById('container-itens-epi').innerHTML = ""; // Limpa a lista ao abrir a tela
+            document.getElementById('container-itens-epi').innerHTML = ""; 
             itemCount = 0;
+            document.getElementById('ent-colab').value = "";
+            document.getElementById('ent-funcao').value = "";
         }
 
         function popularListas() {
@@ -272,38 +270,58 @@
             if(selectId === 'cons-colab') carregarFichaColab();
         }
 
-        function preencherDadosColab() {
-            let nome = document.getElementById('ent-colab').value;
-            let c = bd.colaboradores.find(x => x.nome === nome);
-            if(c){ 
-                document.getElementById('ent-funcao').value = c.funcao; 
-                document.getElementById('ent-setor').value = c.setor; 
-                document.getElementById('ent-admissao').value = c.admissao; 
-                document.getElementById('ent-matricula').value = c.matricula; 
+        // ==========================================
+        // MÁGICA DOS SEMÁFOROS (🚦) E TRAVA DE LISTA
+        // ==========================================
+
+        function getEpiBadge(epiName) {
+            let epiKey = String(epiName).trim().toUpperCase();
+            let proxTrocaStr = window.statusEpiAtual[epiKey];
+
+            if (!proxTrocaStr) return "⚪ Nunca entregue";
+            if (proxTrocaStr === "---" || proxTrocaStr === "N/A") return "🟢 Válido (S/ Validade)";
+
+            let p = proxTrocaStr.split('/');
+            if(p.length === 3) {
+                let dTroca = new Date(p[2], p[1]-1, p[0]).getTime();
+                let hj = new Date(); hj.setHours(0,0,0,0);
+                let diffDias = Math.ceil((dTroca - hj.getTime()) / (1000 * 3600 * 24));
+
+                if (diffDias < 0) return `🔴 Vencido (${Math.abs(diffDias)} dias)`;
+                if (diffDias <= 15) return `🟡 Vence em ${diffDias} dias`;
+                return `🟢 Válido (${diffDias} dias restantes)`;
             }
-            else { document.getElementById('ent-funcao').value = ""; }
-            
-            // Limpa a lista de EPIs para forçar o usuário a gerar uma nova compatível com a função
-            document.getElementById('container-itens-epi').innerHTML = "";
-            itemCount = 0;
+            return "⚪ Status Desconhecido";
         }
 
-        function gerarOpcoesEpiAgrupadas() {
+        function gerarOpcoesEpiAgrupadas(selectAtual) {
             let funcAtual = document.getElementById('ent-funcao').value;
             if (!funcAtual) return '<option value="">Selecione o Colaborador primeiro...</option>';
 
-            // Descobre quais EPIs são obrigatórios para a função
+            // Verifica os EPIs já selecionados na tela para bloqueá-los nas próximas caixas
+            let episSelecionados = [];
+            document.querySelectorAll('.sel-epi').forEach(sel => {
+                if(sel !== selectAtual && sel.value) episSelecionados.push(String(sel.value).trim().toUpperCase());
+            });
+
             let episDaFuncao = bd.validades.filter(v => String(v.funcao).trim().toUpperCase() === String(funcAtual).trim().toUpperCase());
             let nomesEpisDaFuncao = episDaFuncao.map(v => String(v.epi).trim().toUpperCase());
 
-            let optFuncao = '<optgroup label="✅ EPIs OBRIGATÓRIOS (Sua Função)">';
-            let optOutros = '<optgroup label="⚠️ OUTROS EPIs (Digitar Validade)">';
+            let optFuncao = '<optgroup label="⭐ OBRIGATÓRIOS DA FUNÇÃO">';
+            let optOutros = '<optgroup label="➕ OUTROS EPIs (Avulsos)">';
 
             bd.epis.sort().forEach(e => {
-                if (nomesEpisDaFuncao.includes(String(e).trim().toUpperCase())) {
-                    optFuncao += `<option value="${e}">${e}</option>`;
+                let eUpper = String(e).trim().toUpperCase();
+                
+                let status = getEpiBadge(e);
+                let checkmark = episSelecionados.includes(eUpper) ? "✅ JÁ NA LISTA | " : "";
+                
+                let textoFinal = `${checkmark}${e} [${status}]`;
+
+                if (nomesEpisDaFuncao.includes(eUpper)) {
+                    optFuncao += `<option value="${e}">${textoFinal}</option>`;
                 } else {
-                    optOutros += `<option value="${e}">${e}</option>`;
+                    optOutros += `<option value="${e}">${textoFinal}</option>`;
                 }
             });
 
@@ -313,20 +331,56 @@
             return '<option value="">Selecione o EPI entregue...</option>' + optFuncao + optOutros;
         }
 
+        function atualizarTodosDropdownsEpi() {
+            document.querySelectorAll('.sel-epi').forEach(sel => {
+                let valorAtual = sel.value; 
+                sel.innerHTML = gerarOpcoesEpiAgrupadas(sel);
+                sel.value = valorAtual; 
+            });
+        }
+
+        function preencherDadosColab() {
+            let nome = document.getElementById('ent-colab').value;
+            let c = bd.colaboradores.find(x => x.nome === nome);
+            
+            if(c){ 
+                document.getElementById('ent-funcao').value = c.funcao; 
+                document.getElementById('ent-setor').value = c.setor; 
+                document.getElementById('ent-admissao').value = c.admissao; 
+                document.getElementById('ent-matricula').value = c.matricula; 
+            } else { 
+                document.getElementById('ent-funcao').value = ""; 
+            }
+            
+            // Recalcula o banco de dados dos semáforos para este colaborador
+            window.statusEpiAtual = {};
+            let cNome = String(nome).trim().toUpperCase().replace(/\s+/g, ' ');
+            let f = bd.fichas[cNome];
+            if(f) {
+                f.forEach(item => {
+                    // O histórico vem ordenado do mais antigo pro mais novo, então o último sobrescreve e fica com a validade mais recente!
+                    window.statusEpiAtual[String(item.epi).trim().toUpperCase()] = item.prox_troca;
+                });
+            }
+
+            document.getElementById('container-itens-epi').innerHTML = "";
+            itemCount = 0;
+            if(nome) adicionarItemEPI();
+        }
+
         function adicionarItemEPI() {
             let colabAtual = document.getElementById('ent-colab').value;
-            if(!colabAtual) return alert("Por favor, selecione um Colaborador antes de adicionar EPIs.");
+            if(!colabAtual) return alert("❌ Selecione o Colaborador primeiro!");
 
             itemCount++;
             let div = document.createElement('div'); div.className = "linha-item"; div.id = "item-" + itemCount;
-            let opcoesDinamicas = gerarOpcoesEpiAgrupadas();
             
             div.innerHTML = `
-                <button class="btn-remover" onclick="this.parentElement.remove()">Remover</button>
+                <button class="btn-remover" onclick="removerItemEPI(this)">Remover</button>
                 <span class="info-label" style="color:var(--cor-primaria); font-size:14px;">EPI #${itemCount}</span>
                 
                 <label class="info-label">EPI Entregue:</label>
-                <select class="input-campo sel-epi" onchange="buscarValidade(this)">${opcoesDinamicas}</select>
+                <select class="input-campo sel-epi" onchange="aoMudarEpi(this)"></select>
                 
                 <div style="display:flex; gap:10px;">
                     <div style="flex:1;">
@@ -360,6 +414,17 @@
                 </select>
             `;
             document.getElementById('container-itens-epi').appendChild(div);
+            atualizarTodosDropdownsEpi();
+        }
+
+        function aoMudarEpi(selectEl) {
+            buscarValidade(selectEl);
+            atualizarTodosDropdownsEpi();
+        }
+
+        function removerItemEPI(btn) {
+            btn.closest('.linha-item').remove();
+            atualizarTodosDropdownsEpi();
         }
 
         function recalcularTodasAsValidades() {
@@ -375,7 +440,6 @@
             let inputDuracao = box.querySelector('.sel-duracao');
             
             if(val) { 
-                // É um EPI da Função: Trava e preenche
                 inputDuracao.value = val.dias; 
                 inputDuracao.setAttribute('readonly', 'true');
                 inputDuracao.style.backgroundColor = "#e9ecef";
@@ -383,7 +447,6 @@
                 recalcularTrocaManual(inputDuracao);
             }
             else { 
-                // É um EPI Extra: Destrava para o usuário digitar
                 inputDuracao.value = ""; 
                 inputDuracao.removeAttribute('readonly');
                 inputDuracao.style.backgroundColor = "#ffffff";
@@ -427,7 +490,6 @@
             let colab = document.getElementById('ent-colab').value;
             let dt = document.getElementById('ent-data').value;
             
-            // VALIDAÇÕES OBRIGATÓRIAS
             if(!dt) return alert("❌ A Data e Hora da entrega é obrigatória!");
             if(!colab) return alert("❌ Selecione o Colaborador na lista!");
             
