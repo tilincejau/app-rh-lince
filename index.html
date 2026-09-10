@@ -41,6 +41,9 @@
         .btn-sucesso { background: linear-gradient(135deg, #28a745, #218838); color: white; border: none; border-radius: 10px; padding: 14px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(40, 167, 69, 0.2); transition: transform 0.2s; }
         .btn-sucesso:hover { transform: translateY(-2px); }
 
+        .btn-pdf { background: linear-gradient(135deg, #0b5394, #083c6b); color: white; border: none; border-radius: 10px; padding: 14px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(11, 83, 148, 0.2); transition: transform 0.2s; }
+        .btn-pdf:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(11, 83, 148, 0.3); }
+
         .linha-item { border: 2px dashed #dee2e6; padding: 15px; border-radius: 12px; margin-bottom: 15px; background: #ffffff; position: relative; transition: border-color 0.3s; }
         .linha-item:hover { border-color: var(--cor-primaria); }
         .btn-remover { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 11px; font-weight: bold; transition: background 0.3s; }
@@ -57,6 +60,7 @@
 </head>
 <body>
 
+    <!-- LISTA OCULTA PARA O C.A. -->
     <datalist id="opcoes-ca"><option value="N/A"></option></datalist>
 
     <!-- TELA LOGIN -->
@@ -155,7 +159,7 @@
             <label class="info-label">Setor:</label>
             <select id="cad-setor" class="input-campo">
                 <option value="">Selecione o Setor...</option>
-                <option value="ADM">ADM</option>
+                <option value="ADM">ADMINISTRATIVO</option>
                 <option value="COMERCIAL">COMERCIAL</option>
                 <option value="LOGÍSTICA">LOGÍSTICA</option>
                 <option value="OPERACIONAL">OPERACIONAL</option>
@@ -193,6 +197,7 @@
 
         <div class="card">
             <h3>📦 SALDO ATUAL DE EPIS</h3>
+            <button class="btn-pdf" id="btn-pdf-estoque" onclick="gerarRelatorioEstoque()">📄 Gerar PDF do Estoque</button>
             <div id="tabela-estoque" style="overflow-x: auto;"></div>
         </div>
     </div>
@@ -201,7 +206,7 @@
         const API_URL = "https://script.google.com/macros/s/AKfycbzO0b-B8n4grYA7GmyiL9AwFinaJTVll9TldFvDOFBhRS9xFAJu9TG-lC6lwN20X7pBQQ/exec";
         
         let bd = {}; let itemCount = 0; let b64Foto = ""; let isDrawing = false; let ctx;
-        window.statusEpiAtual = {}; // Guarda o status de vencimento para calcular os semáforos 🚦
+        window.statusEpiAtual = {}; 
 
         async function fazerLogin() {
             let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
@@ -214,6 +219,10 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
+                    if(d.versao_backend !== "v7") {
+                        alert("❌ ERRO CRÍTICO: Seu código na nuvem não está na Versão V7. Por favor, implante novamente no Apps Script.");
+                        btn.innerText = "Acessar Sistema"; return;
+                    }
                     window.usuarioLogado = u; 
                     let r2 = await fetch(`${API_URL}?acao=buscar_inicial`); 
                     bd = await r2.json();
@@ -270,10 +279,6 @@
             if(selectId === 'cons-colab') carregarFichaColab();
         }
 
-        // ==========================================
-        // MÁGICA DOS SEMÁFOROS (🚦) E TRAVA DE LISTA
-        // ==========================================
-
         function getEpiBadge(epiName) {
             let epiKey = String(epiName).trim().toUpperCase();
             let proxTrocaStr = window.statusEpiAtual[epiKey];
@@ -298,7 +303,6 @@
             let funcAtual = document.getElementById('ent-funcao').value;
             if (!funcAtual) return '<option value="">Selecione o Colaborador primeiro...</option>';
 
-            // Verifica os EPIs já selecionados na tela para bloqueá-los nas próximas caixas
             let episSelecionados = [];
             document.querySelectorAll('.sel-epi').forEach(sel => {
                 if(sel !== selectAtual && sel.value) episSelecionados.push(String(sel.value).trim().toUpperCase());
@@ -312,22 +316,15 @@
 
             bd.epis.sort().forEach(e => {
                 let eUpper = String(e).trim().toUpperCase();
-                
                 let status = getEpiBadge(e);
                 let checkmark = episSelecionados.includes(eUpper) ? "✅ JÁ NA LISTA | " : "";
-                
                 let textoFinal = `${checkmark}${e} [${status}]`;
 
-                if (nomesEpisDaFuncao.includes(eUpper)) {
-                    optFuncao += `<option value="${e}">${textoFinal}</option>`;
-                } else {
-                    optOutros += `<option value="${e}">${textoFinal}</option>`;
-                }
+                if (nomesEpisDaFuncao.includes(eUpper)) { optFuncao += `<option value="${e}">${textoFinal}</option>`; } 
+                else { optOutros += `<option value="${e}">${textoFinal}</option>`; }
             });
 
-            optFuncao += '</optgroup>';
-            optOutros += '</optgroup>';
-
+            optFuncao += '</optgroup>'; optOutros += '</optgroup>';
             return '<option value="">Selecione o EPI entregue...</option>' + optFuncao + optOutros;
         }
 
@@ -352,15 +349,11 @@
                 document.getElementById('ent-funcao').value = ""; 
             }
             
-            // Recalcula o banco de dados dos semáforos para este colaborador
             window.statusEpiAtual = {};
             let cNome = String(nome).trim().toUpperCase().replace(/\s+/g, ' ');
             let f = bd.fichas[cNome];
             if(f) {
-                f.forEach(item => {
-                    // O histórico vem ordenado do mais antigo pro mais novo, então o último sobrescreve e fica com a validade mais recente!
-                    window.statusEpiAtual[String(item.epi).trim().toUpperCase()] = item.prox_troca;
-                });
+                f.forEach(item => { window.statusEpiAtual[String(item.epi).trim().toUpperCase()] = item.prox_troca; });
             }
 
             document.getElementById('container-itens-epi').innerHTML = "";
@@ -374,13 +367,14 @@
 
             itemCount++;
             let div = document.createElement('div'); div.className = "linha-item"; div.id = "item-" + itemCount;
+            let opcoesDinamicas = gerarOpcoesEpiAgrupadas();
             
             div.innerHTML = `
                 <button class="btn-remover" onclick="removerItemEPI(this)">Remover</button>
                 <span class="info-label" style="color:var(--cor-primaria); font-size:14px;">EPI #${itemCount}</span>
                 
                 <label class="info-label">EPI Entregue:</label>
-                <select class="input-campo sel-epi" onchange="aoMudarEpi(this)"></select>
+                <select class="input-campo sel-epi" onchange="aoMudarEpi(this)">${opcoesDinamicas}</select>
                 
                 <div style="display:flex; gap:10px;">
                     <div style="flex:1;">
@@ -565,6 +559,23 @@
             let p = { acao: "salvar_entrada_estoque", epi: document.getElementById('est-epi').value, qtd: document.getElementById('est-qtd').value, nf: document.getElementById('est-nf').value };
             if(!p.epi || !p.qtd) return alert("❌ Selecione o EPI e digite a Quantidade Comprada!");
             await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("✅ Estoque atualizado com sucesso!"); location.reload();
+        }
+
+        async function gerarRelatorioEstoque() {
+            let btn = document.getElementById('btn-pdf-estoque');
+            btn.innerText = "Gerando PDF... ⏳";
+            btn.disabled = true;
+            try {
+                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({acao: "gerar_pdf_estoque"}) }); 
+                let d = await r.json();
+                if(d.sucesso) { 
+                    alert("✅ Relatório de Estoque gerado no Drive!"); 
+                    window.open(d.pdf, '_blank'); 
+                }
+                else { alert("❌ Erro ao gerar PDF: " + d.erro); }
+            } catch(e) { alert("❌ Erro grave de conexão com a planilha."); }
+            btn.innerText = "📄 Gerar PDF do Estoque";
+            btn.disabled = false;
         }
     </script>
 </body>
