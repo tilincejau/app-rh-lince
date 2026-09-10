@@ -64,10 +64,7 @@
         .status-vencido { color: #dc3545; font-weight: 700; background: #fbe9e7; padding: 4px 8px; border-radius: 4px; display: inline-block;}
         .status-neutro { color: #856404; font-weight: 700; background: #fff3cd; padding: 4px 8px; border-radius: 4px; display: inline-block;}
 
-        /* ====================================================
-           AJUSTE MOBILE (Celulares e Telas Pequenas)
-           Reduz tamanhos de fonte e margens
-           ==================================================== */
+        /* AJUSTE MOBILE */
         @media (max-width: 600px) {
             .app-container { padding: 10px; }
             .card { padding: 15px; }
@@ -146,7 +143,7 @@
         </div>
     </div>
 
-    <!-- TELA CONSULTA (AGORA MOSTRA TODOS DA FUNÇÃO E BOTÃO RÁPIDO) -->
+    <!-- TELA CONSULTA -->
     <div id="tela-consulta" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -231,26 +228,19 @@
         let bd = {}; let itemCount = 0; let b64Foto = ""; let isDrawing = false; let ctx;
         window.statusEpiAtual = {}; 
 
-        // 1. FAZER LOGIN ACELERADO (Puxa tudo na mesma hora)
         async function fazerLogin() {
             let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
             if(!u || !s) return alert("Preencha Usuário e Senha para continuar!");
             
             let btn = document.querySelector('#tela-login .btn-principal');
-            btn.innerText = "Sincronizando Banco de Dados... ⏳"; // Mensagem para o usuário não achar que travou
+            btn.innerText = "Sincronizando Banco de Dados... ⏳"; 
             
             try {
                 let r = await fetch(`${API_URL}?acao=login&usuario=${u}&senha=${s}`); 
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v14") {
-                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V14. Vá no Script, edite e clique em 'Nova Versão'!");
-                        btn.innerText = "Acessar Sistema"; return;
-                    }
                     window.usuarioLogado = u; 
-                    
-                    // O banco de dados inteiro agora já veio junto com a resposta do login! Bem mais rápido!
                     bd = d.bd; 
                     
                     popularListas(); 
@@ -265,7 +255,6 @@
             btn.innerText = "Acessar Sistema";
         }
 
-        // Navegação de Telas
         function abrirTela(id) { document.querySelectorAll('.app-container').forEach(t => t.style.display = 'none'); document.getElementById(id).style.display = 'block'; }
         
         function abrirTelaEntrega() {
@@ -305,7 +294,6 @@
             if(selectId === 'cons-colab') carregarFichaColab();
         }
 
-        // Gera as 'bolinhas coloridas' (Semáforos) baseadas no histórico do Colaborador
         function getEpiBadge(epiName) {
             let epiKey = String(epiName).trim().toUpperCase();
             let proxTrocaStr = window.statusEpiAtual[epiKey];
@@ -385,13 +373,10 @@
 
             document.getElementById('container-itens-epi').innerHTML = "";
             itemCount = 0;
-            // Se tiver colaborador, já abre 1 campo de EPI em branco para ele
         }
 
-        // Função que aciona a MÁGICA 2: Entregar Rápido vindo da Tela de Consulta
         function iniciarEntregaRapida(epiNome) {
             let colabConsulta = document.getElementById('cons-colab').value;
-            
             abrirTela('tela-entrega');
             
             let n = new Date(); let hL = new Date(n.getTime() - (n.getTimezoneOffset() * 60000)).toISOString().slice(0,16);
@@ -399,13 +384,11 @@
             document.getElementById('container-itens-epi').innerHTML = ""; 
             itemCount = 0;
 
-            // Finge que o usuário buscou esse colaborador na tela de Entrega
             document.getElementById('busca-ent-colab').value = colabConsulta;
             filtrarColab(colabConsulta, 'ent-colab');
             document.getElementById('ent-colab').value = colabConsulta;
             preencherDadosColab(); 
 
-            // Clica automaticamente no botão Adicionar EPI e trava ele no EPI que foi clicado
             adicionarItemEPI(epiNome);
         }
 
@@ -458,12 +441,14 @@
             document.getElementById('container-itens-epi').appendChild(div);
             atualizarTodosDropdownsEpi();
 
-            // Se for Entrega Rápida, já preenche o Select pra pessoa!
             if(epiPreSelecionado) {
                 let selects = document.querySelectorAll('.sel-epi');
                 let ultimoSelect = selects[selects.length - 1];
-                ultimoSelect.value = epiPreSelecionado;
-                aoMudarEpi(ultimoSelect);
+                let optionExists = Array.from(ultimoSelect.options).some(opt => opt.value === epiPreSelecionado);
+                if(optionExists) {
+                    ultimoSelect.value = epiPreSelecionado;
+                    aoMudarEpi(ultimoSelect);
+                }
             }
         }
 
@@ -558,7 +543,7 @@
                 let numItem = i + 1;
                 if(!epi) return alert(`❌ Selecione qual é o EPI no Item #${numItem}!`);
                 if(!qtd || qtd <= 0) return alert(`❌ Informe a Quantidade válida no Item #${numItem}!`);
-                if(!ca) return alert(`❌ Preencha o C.A. no Item #${numItem}! (Se não houver, digite N/A)`);
+                if(!ca) return alert(`❌ Preencha o C.A. no Item #${numItem}!`);
                 if(!duracao || duracao <= 0) return alert(`❌ Digite a Duração (em dias) do EPI no Item #${numItem}!`);
                 if(!motivo) return alert(`❌ Selecione o Motivo da entrega no Item #${numItem}!`);
                 
@@ -599,50 +584,64 @@
         }
 
         // =========================================================
-        // MÁGICA 3: Painel de Consulta Mostrando Todos os EPIs Obrigatórios
+        // MÁGICA DO AGRUPADOR DE FAMÍLIAS DE EPI
         // =========================================================
+        
+        function getBaseEpiName(epiName) {
+            // Remove o tamanho entre parênteses no final do nome. Ex: "BOTA (40)" vira "BOTA"
+            return String(epiName).replace(/\s*\([^)]+\)$/, '').trim();
+        }
+
         function carregarFichaColab() {
             let colabNome = String(document.getElementById('cons-colab').value).trim().toUpperCase().replace(/\s+/g, ' '); 
             if(!colabNome) { document.getElementById('resultado-ficha').innerHTML = ""; return; }
 
-            // Qual é a função dele?
             let colabObj = bd.colaboradores.find(c => c.nome.toUpperCase() === colabNome);
             let funcao = colabObj ? colabObj.funcao : "";
 
-            // EPIs que ele OBRIGATORIAMENTE deve ter:
             let validadesDaFuncao = bd.validades.filter(v => v.funcao.toUpperCase() === funcao.toUpperCase());
-            let episObrigatorios = validadesDaFuncao.map(v => v.epi.toUpperCase());
+            let exibicao = {};
 
-            // Tabela que vai ser desenhada
-            let statusDosEpis = {};
-
-            // 1. Injeta os EPIs Obrigatórios com status "NÃO ENTREGUE"
+            // 1. Cria a base de EPIs obrigatórios agrupando tamanhos
             validadesDaFuncao.forEach(v => {
-                statusDosEpis[v.epi.toUpperCase()] = { 
-                    epi: v.epi, data: '---', qtd: '---', ca: '---', prox_troca: '---', status: 'NÃO ENTREGUE' 
-                };
+                let baseName = getBaseEpiName(v.epi.toUpperCase());
+                if(!exibicao[baseName]) {
+                    exibicao[baseName] = { 
+                        epiBase: baseName,
+                        epi: baseName + " (Definir Tamanho)", // Texto exibido quando nunca entregue
+                        data: '---', qtd: '---', ca: '---', prox_troca: '---', status: 'NÃO ENTREGUE' 
+                    };
+                }
             });
 
-            // 2. Olha no Histórico do funcionário e atualiza o que ele já recebeu (sobrescrevendo o status)
+            // 2. Olha no Histórico real: Se entregou o 40, atualiza. Se mês que vem entregou o 41, o 41 sobrepõe o 40.
             let historico = bd.fichas[colabNome] || [];
             historico.forEach(h => {
-                let nomeUpper = String(h.epi).toUpperCase();
-                // Como o array de histórico é lido do começo pro fim, o último sempre ganha (O mais atual!)
-                statusDosEpis[nomeUpper] = {
-                    epi: h.epi, data: h.data, qtd: h.qtd, ca: h.ca, prox_troca: h.prox_troca, status: h.status
+                let nomeReal = String(h.epi).toUpperCase();
+                let baseName = getBaseEpiName(nomeReal);
+                
+                exibicao[baseName] = {
+                    epiBase: baseName,
+                    epi: h.epi, // Mostra o nome real com o tamanho, ex: BOTA (40)
+                    data: h.data, 
+                    qtd: h.qtd, 
+                    ca: h.ca, 
+                    prox_troca: h.prox_troca, 
+                    status: h.status
                 };
             });
 
             let html = "<table><tr><th>EPI</th><th>Última Data</th><th>C.A.</th><th>Troca</th><th>Status Atual</th><th>Ação Rápida</th></tr>";
             
-            // Desenha a tabela com todos os EPIs encontrados
-            Object.values(statusDosEpis).forEach(info => {
+            Object.values(exibicao).forEach(info => {
                 let cl = "";
                 if(info.status === "Vencido") cl = "status-vencido";
                 else if(info.status === "Válido") cl = "status-valido";
                 else cl = "status-neutro";
 
-                let btnEntregar = `<button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${info.epi}')">🚀 Entregar Novo</button>`;
+                // Se não foi entregue, manda vazio para a tela de entrega obrigar o usuário a escolher um tamanho
+                let termoBusca = (info.status === 'NÃO ENTREGUE') ? '' : info.epi; 
+                let btnEntregar = `<button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')">🚀 Entregar Novo</button>`;
 
                 html += `<tr>
                     <td><b>${info.epi}</b></td>
