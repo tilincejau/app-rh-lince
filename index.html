@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RH - Controle de EPIs</title>
     <style>
+        /* ====================================================
+           DESIGN E CORES PADRÃO LINCE
+           ==================================================== */
         :root {
             --cor-primaria: #1a4d2e;
             --cor-primaria-hover: #133a22;
@@ -43,6 +46,9 @@
         .btn-pdf { background: linear-gradient(135deg, #0b5394, #083c6b); color: white; border: none; border-radius: 10px; padding: 14px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(11, 83, 148, 0.2); transition: transform 0.2s; }
         .btn-pdf:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(11, 83, 148, 0.3); }
 
+        .btn-acao-rapida { background-color: var(--cor-primaria); color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: bold; margin-top: 5px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .btn-acao-rapida:hover { background-color: var(--cor-primaria-hover); }
+
         .linha-item { border: 2px dashed #dee2e6; padding: 15px; border-radius: 12px; margin-bottom: 15px; background: #ffffff; position: relative; transition: border-color 0.3s; }
         .linha-item:hover { border-color: var(--cor-primaria); }
         .btn-remover { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 11px; font-weight: bold; transition: background 0.3s; }
@@ -51,16 +57,33 @@
         canvas { border: 2px dashed var(--cor-primaria); background: #f8f9fa; width: 100%; height: 140px; border-radius: 12px; touch-action: none; margin-bottom: 10px; cursor: crosshair; }
         
         table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; margin-top: 10px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-        th, td { border-bottom: 1px solid #dee2e6; padding: 10px; text-align: center; background: #fff; }
+        th, td { border-bottom: 1px solid #dee2e6; padding: 10px; text-align: center; background: #fff; vertical-align: middle; }
         th { background-color: var(--cor-primaria); color: white; font-weight: 600; text-transform: uppercase; font-size: 11px; }
-        .status-valido { color: #28a745; font-weight: 700; background: #e8f5e9; padding: 4px 8px; border-radius: 4px; } 
-        .status-vencido { color: #dc3545; font-weight: 700; background: #fbe9e7; padding: 4px 8px; border-radius: 4px; }
+        
+        .status-valido { color: #28a745; font-weight: 700; background: #e8f5e9; padding: 4px 8px; border-radius: 4px; display: inline-block;} 
+        .status-vencido { color: #dc3545; font-weight: 700; background: #fbe9e7; padding: 4px 8px; border-radius: 4px; display: inline-block;}
+        .status-neutro { color: #856404; font-weight: 700; background: #fff3cd; padding: 4px 8px; border-radius: 4px; display: inline-block;}
+
+        /* ====================================================
+           AJUSTE MOBILE (Celulares e Telas Pequenas)
+           Reduz tamanhos de fonte e margens
+           ==================================================== */
+        @media (max-width: 600px) {
+            .app-container { padding: 10px; }
+            .card { padding: 15px; }
+            .input-campo, select { font-size: 13px; padding: 10px; }
+            table { font-size: 11px; }
+            th, td { padding: 6px; }
+            .btn-acao-rapida { font-size: 10px; padding: 6px 8px; }
+            .status-valido, .status-vencido, .status-neutro { font-size: 10px; padding: 3px 5px;}
+        }
     </style>
 </head>
 <body>
 
     <datalist id="opcoes-ca"><option value="N/A"></option></datalist>
 
+    <!-- TELA LOGIN -->
     <div id="tela-login" class="app-container">
         <div class="card">
             <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
@@ -74,6 +97,7 @@
         </div>
     </div>
 
+    <!-- TELA MENU -->
     <div id="tela-menu" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -88,6 +112,7 @@
         </div>
     </div>
 
+    <!-- TELA ENTREGA -->
     <div id="tela-entrega" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -121,13 +146,14 @@
         </div>
     </div>
 
+    <!-- TELA CONSULTA (AGORA MOSTRA TODOS DA FUNÇÃO E BOTÃO RÁPIDO) -->
     <div id="tela-consulta" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
 
         <button class="btn-secundario" onclick="abrirTela('tela-menu')">⬅ Voltar ao Menu</button>
         <div class="card">
-            <h3>CONSULTAR HISTÓRICO</h3>
+            <h3>PAINEL DO COLABORADOR</h3>
             <label class="info-label">Busque o Colaborador:</label>
             <input type="text" id="busca-cons-colab" class="input-campo" placeholder="🔍 Digite para filtrar..." onkeyup="filtrarColab(this.value, 'cons-colab')">
             <select id="cons-colab" class="input-campo" onchange="carregarFichaColab()"></select>
@@ -136,6 +162,7 @@
         </div>
     </div>
 
+    <!-- TELA CADASTRO COLAB -->
     <div id="tela-cadastro-colab" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -164,6 +191,7 @@
         </div>
     </div>
 
+    <!-- TELA ESTOQUE -->
     <div id="tela-estoque" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -194,35 +222,40 @@
         </div>
     </div>
 
+    <!-- ==========================================
+         CÓDIGO JAVASCRIPT DO SISTEMA
+         ========================================== -->
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbzO0b-B8n4grYA7GmyiL9AwFinaJTVll9TldFvDOFBhRS9xFAJu9TG-lC6lwN20X7pBQQ/exec";
         
         let bd = {}; let itemCount = 0; let b64Foto = ""; let isDrawing = false; let ctx;
         window.statusEpiAtual = {}; 
 
+        // 1. FAZER LOGIN ACELERADO (Puxa tudo na mesma hora)
         async function fazerLogin() {
             let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
             if(!u || !s) return alert("Preencha Usuário e Senha para continuar!");
+            
             let btn = document.querySelector('#tela-login .btn-principal');
-            btn.innerText = "Conectando e Baixando Dados... ⏳";
+            btn.innerText = "Sincronizando Banco de Dados... ⏳"; // Mensagem para o usuário não achar que travou
             
             try {
                 let r = await fetch(`${API_URL}?acao=login&usuario=${u}&senha=${s}`); 
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v13") {
-                        alert("❌ ERRO CRÍTICO: Seu código na nuvem não atualizou para a V13. Vá no Apps Script, crie uma Nova Versão e garanta que o código foi salvo!");
+                    if(d.versao_backend !== "v14") {
+                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V14. Vá no Script, edite e clique em 'Nova Versão'!");
                         btn.innerText = "Acessar Sistema"; return;
                     }
                     window.usuarioLogado = u; 
-                    let r2 = await fetch(`${API_URL}?acao=buscar_inicial`); 
-                    bd = await r2.json();
-                    if(bd.sucesso) {
-                        popularListas(); abrirTela('tela-menu'); initPad();
-                    } else {
-                        alert("Erro ao ler dados da planilha:\n" + bd.erro);
-                    }
+                    
+                    // O banco de dados inteiro agora já veio junto com a resposta do login! Bem mais rápido!
+                    bd = d.bd; 
+                    
+                    popularListas(); 
+                    abrirTela('tela-menu'); 
+                    initPad();
                 } else { 
                     alert("Acesso Negado: " + (d.erro || "Usuário ou Senha incorretos!")); 
                 }
@@ -232,6 +265,7 @@
             btn.innerText = "Acessar Sistema";
         }
 
+        // Navegação de Telas
         function abrirTela(id) { document.querySelectorAll('.app-container').forEach(t => t.style.display = 'none'); document.getElementById(id).style.display = 'block'; }
         
         function abrirTelaEntrega() {
@@ -271,6 +305,7 @@
             if(selectId === 'cons-colab') carregarFichaColab();
         }
 
+        // Gera as 'bolinhas coloridas' (Semáforos) baseadas no histórico do Colaborador
         function getEpiBadge(epiName) {
             let epiKey = String(epiName).trim().toUpperCase();
             let proxTrocaStr = window.statusEpiAtual[epiKey];
@@ -350,16 +385,37 @@
 
             document.getElementById('container-itens-epi').innerHTML = "";
             itemCount = 0;
-            if(nome) adicionarItemEPI();
+            // Se tiver colaborador, já abre 1 campo de EPI em branco para ele
         }
 
-        function adicionarItemEPI() {
+        // Função que aciona a MÁGICA 2: Entregar Rápido vindo da Tela de Consulta
+        function iniciarEntregaRapida(epiNome) {
+            let colabConsulta = document.getElementById('cons-colab').value;
+            
+            abrirTela('tela-entrega');
+            
+            let n = new Date(); let hL = new Date(n.getTime() - (n.getTimezoneOffset() * 60000)).toISOString().slice(0,16);
+            document.getElementById('ent-data').value = hL;
+            document.getElementById('container-itens-epi').innerHTML = ""; 
+            itemCount = 0;
+
+            // Finge que o usuário buscou esse colaborador na tela de Entrega
+            document.getElementById('busca-ent-colab').value = colabConsulta;
+            filtrarColab(colabConsulta, 'ent-colab');
+            document.getElementById('ent-colab').value = colabConsulta;
+            preencherDadosColab(); 
+
+            // Clica automaticamente no botão Adicionar EPI e trava ele no EPI que foi clicado
+            adicionarItemEPI(epiNome);
+        }
+
+        function adicionarItemEPI(epiPreSelecionado = null) {
             let colabAtual = document.getElementById('ent-colab').value;
             if(!colabAtual) return alert("❌ Selecione o Colaborador primeiro!");
 
             itemCount++;
             let div = document.createElement('div'); div.className = "linha-item"; div.id = "item-" + itemCount;
-            let opcoesDinamicas = gerarOpcoesEpiAgrupadas();
+            let opcoesDinamicas = gerarOpcoesEpiAgrupadas(null);
             
             div.innerHTML = `
                 <button class="btn-remover" onclick="removerItemEPI(this)">Remover</button>
@@ -401,6 +457,14 @@
             `;
             document.getElementById('container-itens-epi').appendChild(div);
             atualizarTodosDropdownsEpi();
+
+            // Se for Entrega Rápida, já preenche o Select pra pessoa!
+            if(epiPreSelecionado) {
+                let selects = document.querySelectorAll('.sel-epi');
+                let ultimoSelect = selects[selects.length - 1];
+                ultimoSelect.value = epiPreSelecionado;
+                aoMudarEpi(ultimoSelect);
+            }
         }
 
         function aoMudarEpi(selectEl) {
@@ -494,7 +558,7 @@
                 let numItem = i + 1;
                 if(!epi) return alert(`❌ Selecione qual é o EPI no Item #${numItem}!`);
                 if(!qtd || qtd <= 0) return alert(`❌ Informe a Quantidade válida no Item #${numItem}!`);
-                if(!ca) return alert(`❌ Preencha o C.A. no Item #${numItem}!`);
+                if(!ca) return alert(`❌ Preencha o C.A. no Item #${numItem}! (Se não houver, digite N/A)`);
                 if(!duracao || duracao <= 0) return alert(`❌ Digite a Duração (em dias) do EPI no Item #${numItem}!`);
                 if(!motivo) return alert(`❌ Selecione o Motivo da entrega no Item #${numItem}!`);
                 
@@ -517,12 +581,7 @@
             try {
                 let response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
                 let textResult = await response.text();
-                let resJSON;
-                try {
-                    resJSON = JSON.parse(textResult);
-                } catch(jsonErr) {
-                    throw new Error("Resposta inválida do Google: " + textResult.substring(0, 150));
-                }
+                let resJSON = JSON.parse(textResult);
 
                 if(resJSON.sucesso) { 
                     alert("✅ Entrega salva com sucesso! O PDF foi gerado."); 
@@ -539,18 +598,62 @@
             btn.disabled = false;
         }
 
+        // =========================================================
+        // MÁGICA 3: Painel de Consulta Mostrando Todos os EPIs Obrigatórios
+        // =========================================================
         function carregarFichaColab() {
-            let c = String(document.getElementById('cons-colab').value).trim().toUpperCase().replace(/\s+/g, ' '); 
-            let f = bd.fichas[c];
-            
-            if(!c) { document.getElementById('resultado-ficha').innerHTML = ""; return; }
-            if(!f) return document.getElementById('resultado-ficha').innerHTML = "<p style='text-align:center; margin-top:20px; color:var(--cor-label); font-weight:bold;'>Este colaborador ainda não possui histórico de EPIs.</p>";
-            
-            let html = "<table><tr><th>Data</th><th>EPI</th><th>C.A.</th><th>Troca</th><th>Status</th></tr>";
-            f.forEach(i => {
-                let cl = i.status === "Vencido" ? "status-vencido" : "status-valido";
-                html += `<tr><td>${i.data}</td><td>${i.epi} <b>(${i.qtd})</b></td><td>${i.ca}</td><td>${i.prox_troca}</td><td><span class="${cl}">${i.status}</span></td></tr>`;
+            let colabNome = String(document.getElementById('cons-colab').value).trim().toUpperCase().replace(/\s+/g, ' '); 
+            if(!colabNome) { document.getElementById('resultado-ficha').innerHTML = ""; return; }
+
+            // Qual é a função dele?
+            let colabObj = bd.colaboradores.find(c => c.nome.toUpperCase() === colabNome);
+            let funcao = colabObj ? colabObj.funcao : "";
+
+            // EPIs que ele OBRIGATORIAMENTE deve ter:
+            let validadesDaFuncao = bd.validades.filter(v => v.funcao.toUpperCase() === funcao.toUpperCase());
+            let episObrigatorios = validadesDaFuncao.map(v => v.epi.toUpperCase());
+
+            // Tabela que vai ser desenhada
+            let statusDosEpis = {};
+
+            // 1. Injeta os EPIs Obrigatórios com status "NÃO ENTREGUE"
+            validadesDaFuncao.forEach(v => {
+                statusDosEpis[v.epi.toUpperCase()] = { 
+                    epi: v.epi, data: '---', qtd: '---', ca: '---', prox_troca: '---', status: 'NÃO ENTREGUE' 
+                };
             });
+
+            // 2. Olha no Histórico do funcionário e atualiza o que ele já recebeu (sobrescrevendo o status)
+            let historico = bd.fichas[colabNome] || [];
+            historico.forEach(h => {
+                let nomeUpper = String(h.epi).toUpperCase();
+                // Como o array de histórico é lido do começo pro fim, o último sempre ganha (O mais atual!)
+                statusDosEpis[nomeUpper] = {
+                    epi: h.epi, data: h.data, qtd: h.qtd, ca: h.ca, prox_troca: h.prox_troca, status: h.status
+                };
+            });
+
+            let html = "<table><tr><th>EPI</th><th>Última Data</th><th>C.A.</th><th>Troca</th><th>Status Atual</th><th>Ação Rápida</th></tr>";
+            
+            // Desenha a tabela com todos os EPIs encontrados
+            Object.values(statusDosEpis).forEach(info => {
+                let cl = "";
+                if(info.status === "Vencido") cl = "status-vencido";
+                else if(info.status === "Válido") cl = "status-valido";
+                else cl = "status-neutro";
+
+                let btnEntregar = `<button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${info.epi}')">🚀 Entregar Novo</button>`;
+
+                html += `<tr>
+                    <td><b>${info.epi}</b></td>
+                    <td>${info.data}</td>
+                    <td>${info.ca}</td>
+                    <td>${info.prox_troca}</td>
+                    <td><span class="${cl}">${info.status}</span></td>
+                    <td>${btnEntregar}</td>
+                </tr>`;
+            });
+
             document.getElementById('resultado-ficha').innerHTML = html + "</table>";
         }
 
