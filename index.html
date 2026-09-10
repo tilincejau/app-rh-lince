@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RH - Controle de EPIs</title>
     <style>
-        /* DESIGN MODERNO E PREMIUM */
         :root {
             --cor-primaria: #1a4d2e;
             --cor-primaria-hover: #133a22;
@@ -60,10 +59,8 @@
 </head>
 <body>
 
-    <!-- LISTA OCULTA PARA O C.A. -->
     <datalist id="opcoes-ca"><option value="N/A"></option></datalist>
 
-    <!-- TELA LOGIN -->
     <div id="tela-login" class="app-container">
         <div class="card">
             <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
@@ -77,7 +74,6 @@
         </div>
     </div>
 
-    <!-- TELA MENU -->
     <div id="tela-menu" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -92,7 +88,6 @@
         </div>
     </div>
 
-    <!-- TELA ENTREGA -->
     <div id="tela-entrega" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -126,7 +121,6 @@
         </div>
     </div>
 
-    <!-- TELA CONSULTA -->
     <div id="tela-consulta" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -142,7 +136,6 @@
         </div>
     </div>
 
-    <!-- TELA CADASTRO COLAB -->
     <div id="tela-cadastro-colab" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -171,7 +164,6 @@
         </div>
     </div>
 
-    <!-- TELA ESTOQUE -->
     <div id="tela-estoque" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -219,8 +211,8 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v11") {
-                        alert("❌ ERRO CRÍTICO: Seu código na nuvem não atualizou para a V11. Vá no Apps Script, crie uma Nova Versão e garanta que o código foi salvo!");
+                    if(d.versao_backend !== "v13") {
+                        alert("❌ ERRO CRÍTICO: Seu código na nuvem não atualizou para a V13. Vá no Apps Script, crie uma Nova Versão e garanta que o código foi salvo!");
                         btn.innerText = "Acessar Sistema"; return;
                     }
                     window.usuarioLogado = u; 
@@ -235,7 +227,7 @@
                     alert("Acesso Negado: " + (d.erro || "Usuário ou Senha incorretos!")); 
                 }
             } catch(e) { 
-                alert("❌ BLOQUEIO DE REDE (CORS)\n\nO Google bloqueou a conexão. Verifique se o Link está correto e se o acesso está como 'Qualquer pessoa'.\n\nDetalhe técnico: " + e.message); 
+                alert("❌ BLOQUEIO DE REDE (CORS): " + e.message); 
             }
             btn.innerText = "Acessar Sistema";
         }
@@ -502,7 +494,7 @@
                 let numItem = i + 1;
                 if(!epi) return alert(`❌ Selecione qual é o EPI no Item #${numItem}!`);
                 if(!qtd || qtd <= 0) return alert(`❌ Informe a Quantidade válida no Item #${numItem}!`);
-                if(!ca) return alert(`❌ Preencha o C.A. no Item #${numItem}! (Se não houver, selecione ou digite N/A)`);
+                if(!ca) return alert(`❌ Preencha o C.A. no Item #${numItem}!`);
                 if(!duracao || duracao <= 0) return alert(`❌ Digite a Duração (em dias) do EPI no Item #${numItem}!`);
                 if(!motivo) return alert(`❌ Selecione o Motivo da entrega no Item #${numItem}!`);
                 
@@ -521,15 +513,28 @@
             let btn = document.getElementById('btn-salvar-entrega');
             btn.innerText = "Enviando e Gerando PDF... ⏳";
             btn.disabled = true;
+
             try {
-                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); let d = await r.json();
-                if(d.sucesso) { 
-                    alert("✅ Entrega salva! O PDF foi gerado no Google Drive."); 
-                    window.open(d.pdf, '_blank'); 
-                    location.reload(); 
+                let response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                let textResult = await response.text();
+                let resJSON;
+                try {
+                    resJSON = JSON.parse(textResult);
+                } catch(jsonErr) {
+                    throw new Error("Resposta inválida do Google: " + textResult.substring(0, 150));
                 }
-                else { alert("❌ Erro ao gerar PDF: " + d.erro); }
-            } catch(e) { alert("❌ Erro grave de conexão com a planilha."); }
+
+                if(resJSON.sucesso) { 
+                    alert("✅ Entrega salva com sucesso! O PDF foi gerado."); 
+                    window.open(resJSON.pdf, '_blank'); 
+                    location.reload(); 
+                } else { 
+                    alert("❌ Erro retornado pelo Google:\n" + resJSON.erro); 
+                }
+            } catch(e) { 
+                alert("❌ Erro de comunicação: " + e.message); 
+            }
+            
             btn.innerText = "💾 Finalizar e Gerar PDF";
             btn.disabled = false;
         }
@@ -571,9 +576,12 @@
                 if(d.sucesso) { 
                     alert("✅ Relatório de Estoque gerado no Drive!"); 
                     window.open(d.pdf, '_blank'); 
+                } else { 
+                    alert("❌ Erro ao gerar PDF: " + d.erro); 
                 }
-                else { alert("❌ Erro ao gerar PDF: " + d.erro); }
-            } catch(e) { alert("❌ Erro grave de conexão com a planilha."); }
+            } catch(e) { 
+                alert("❌ Erro de conexão: " + e.message); 
+            }
             btn.innerText = "📄 Gerar PDF do Estoque";
             btn.disabled = false;
         }
