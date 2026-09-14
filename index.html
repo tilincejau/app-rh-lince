@@ -73,6 +73,9 @@
         .spinner { border: 4px solid rgba(0,0,0,0.1); border-left-color: var(--cor-primaria); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 10px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
+        .cracha-demissao { background: #ffebee; color: #c62828; padding: 8px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-weight: bold; font-size: 12px; border: 1px solid #ffcdd2; display: none; }
+        .cracha-ativo { background: #e8f5e9; color: #2e7d32; padding: 8px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-weight: bold; font-size: 12px; border: 1px solid #c8e6c9; display: none; }
+
         @media (max-width: 600px) {
             .app-container { padding: 10px; }
             .card { padding: 15px; }
@@ -127,7 +130,7 @@
             <label class="info-label">Data e Hora da Entrega:</label>
             <input type="datetime-local" id="ent-data" class="input-campo" onchange="recalcularTodasAsValidades()">
 
-            <label class="info-label">Busque o Colaborador:</label>
+            <label class="info-label">Busque o Colaborador (Apenas Ativos):</label>
             <input type="text" id="busca-ent-colab" class="input-campo" placeholder="🔍 Digite para filtrar nomes..." onkeyup="filtrarColab(this.value, 'ent-colab')">
             <select id="ent-colab" class="input-campo" onchange="preencherDadosColab()"></select>
             
@@ -159,6 +162,17 @@
             <label class="info-label">Busque o Colaborador:</label>
             <input type="text" id="busca-cons-colab" class="input-campo" placeholder="🔍 Digite para filtrar..." onkeyup="filtrarColab(this.value, 'cons-colab')">
             <select id="cons-colab" class="input-campo" onchange="carregarFichaColab()"></select>
+
+            <div id="cracha-ativo" class="cracha-ativo">🟢 COLABORADOR ATIVO - Admissão: <span id="cracha-adm1"></span></div>
+            <div id="cracha-demitido" class="cracha-demissao">🔴 COLABORADOR DESLIGADO - Admissão: <span id="cracha-adm2"></span> | Demissão: <span id="cracha-dem"></span></div>
+            
+            <div id="box-demissao" style="display:none; background:#f8f9fa; padding:10px; border-radius:8px; margin-bottom:15px; border: 1px dashed #ccc;">
+                <label class="info-label" style="margin-top:0;">Registrar Desligamento:</label>
+                <div style="display:flex; gap:10px;">
+                    <input type="date" id="input-demissao" class="input-campo" style="margin-bottom:0;">
+                    <button class="btn-secundario" style="margin-bottom:0; background:#dc3545;" onclick="salvarDemissao()">Salvar</button>
+                </div>
+            </div>
             
             <div id="resultado-ficha" style="overflow-x: auto;"></div>
         </div>
@@ -222,7 +236,6 @@
         </div>
     </div>
 
-    <!-- MODAL DE EDIÇÃO DO EPI -->
     <div id="modal-edicao" class="modal-overlay">
         <div class="modal-box">
             <h3 style="color:#1a4d2e; margin-top:0;">Editar Histórico</h3>
@@ -254,7 +267,6 @@
         </div>
     </div>
 
-    <!-- MODAL ALERTA DE VENCIDOS -->
     <div id="modal-vencidos" class="modal-overlay">
         <div class="modal-box" style="text-align:center;">
             <h2 style="color:#dc3545; margin-top:0;">🚨 ATENÇÃO!</h2>
@@ -311,8 +323,8 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v21") {
-                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V21. Vá no Script, edite e clique em 'Nova Versão'!");
+                    if(d.versao_backend !== "v22") {
+                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V22. Vá no Script, edite e clique em 'Nova Versão'!");
                         btn.innerText = "Acessar Sistema"; return;
                     }
                     window.usuarioLogado = u; 
@@ -329,6 +341,7 @@
         function verificarVencidosGlobais() {
             window.listaGlobaisVencidos = [];
             bd.colaboradores.forEach(c => {
+                if(!c.ativo) return; // PULA OS DEMITIDOS NO ALERTA GLOBAL
                 let f = bd.fichas[c.nome];
                 if(f) {
                     let episArray = {};
@@ -345,8 +358,21 @@
         }
 
         function enviarWhatsappGestor() {
-            let msg = "*🚨 RELATÓRIO DE EPIs VENCIDOS 🚨*\n\nO sistema detectou colaboradores precisando de substituição:\n\n";
-            window.listaGlobaisVencidos.forEach(v => { msg += `👤 *${v.colab}*\n🧤 ${v.epi} (Venceu: ${v.data})\n\n`; });
+            let msg = "*🚨 RELATÓRIO DE EPIs VENCIDOS 🚨*\n\n";
+            let agrupado = {};
+            
+            window.listaGlobaisVencidos.forEach(v => {
+                if(!agrupado[v.colab]) agrupado[v.colab] = [];
+                agrupado[v.colab].push(v);
+            });
+            
+            Object.keys(agrupado).forEach(colab => {
+                msg += `👤 *${colab}*\n`;
+                agrupado[colab].forEach(epi => { msg += `  - ${epi.epi} (Venceu em: ${epi.data})\n`; });
+                msg += `\n`;
+            });
+            
+            msg += "Acesse o painel para realizar as trocas ou extensões de prazos.";
             window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
         }
 
@@ -378,7 +404,13 @@
             let select = document.getElementById(selectId);
             let options = '<option value="">Selecione o Colaborador...</option>';
             bd.colaboradores.sort((a,b) => a.nome.localeCompare(b.nome)).forEach(c => {
-                if(c.nome.toLowerCase().includes(texto.toLowerCase())) { options += `<option value="${c.nome}">${c.nome} - ${c.funcao}</option>`; }
+                // Se for pra entregar EPI, não mostra o demitido na lista!
+                if(selectId === 'ent-colab' && !c.ativo) return; 
+
+                if(c.nome.toLowerCase().includes(texto.toLowerCase())) { 
+                    let tag = c.ativo ? '' : ' [DESLIGADO]';
+                    options += `<option value="${c.nome}">${c.nome} - ${c.funcao}${tag}</option>`; 
+                }
             });
             select.innerHTML = options;
             if(selectId === 'ent-colab') preencherDadosColab();
@@ -571,9 +603,7 @@
             }
             if(!document.getElementById('canvas-ass').getAttribute('d')) return alert("❌ A Assinatura do Colaborador é obrigatória!");
             
-            let p = {
-                acao: "salvar_entrega", colaborador: colab, data_hora: dt, matricula: document.getElementById('ent-matricula').value, admissao: document.getElementById('ent-admissao').value, funcao: document.getElementById('ent-funcao').value, setor: document.getElementById('ent-setor').value, assinatura: document.getElementById('canvas-ass').toDataURL(), foto: b64Foto, itens: itens
-            };
+            let p = { acao: "salvar_entrega", colaborador: colab, data_hora: dt, matricula: document.getElementById('ent-matricula').value, admissao: document.getElementById('ent-admissao').value, funcao: document.getElementById('ent-funcao').value, setor: document.getElementById('ent-setor').value, assinatura: document.getElementById('canvas-ass').toDataURL(), foto: b64Foto, itens: itens };
 
             let btn = document.getElementById('btn-salvar-entrega'); btn.innerText = "Enviando e Gerando PDF... ⏳"; btn.disabled = true;
 
@@ -584,7 +614,7 @@
 
                 if(resJSON.sucesso) { 
                     alert("✅ Entrega salva com sucesso! O PDF foi gerado."); window.open(resJSON.pdf, '_blank'); 
-                    await recarregarDadosSilenciosamente(); // NOVO: Não desloga
+                    await recarregarDadosSilenciosamente(); 
                 } else { alert("❌ Erro:\n" + resJSON.erro); }
             } catch(e) { alert("❌ Erro de comunicação: " + e.message); }
             
@@ -595,10 +625,34 @@
 
         function carregarFichaColab() {
             let colabNome = String(document.getElementById('cons-colab').value).trim().toUpperCase().replace(/\s+/g, ' '); 
-            if(!colabNome) { document.getElementById('resultado-ficha').innerHTML = ""; return; }
+            if(!colabNome) { 
+                document.getElementById('resultado-ficha').innerHTML = ""; 
+                document.getElementById('cracha-ativo').style.display = 'none';
+                document.getElementById('cracha-demitido').style.display = 'none';
+                document.getElementById('box-demissao').style.display = 'none';
+                return; 
+            }
 
             let colabObj = bd.colaboradores.find(c => c.nome.toUpperCase() === colabNome);
             let funcao = colabObj ? colabObj.funcao : "";
+
+            if(colabObj) {
+                if(colabObj.ativo) {
+                    document.getElementById('cracha-ativo').style.display = 'block';
+                    document.getElementById('cracha-demitido').style.display = 'none';
+                    document.getElementById('cracha-adm1').innerText = colabObj.admissao;
+                    document.getElementById('box-demissao').style.display = 'block'; // Mostra botão de demitir
+                    document.getElementById('input-demissao').value = "";
+                } else {
+                    document.getElementById('cracha-ativo').style.display = 'none';
+                    document.getElementById('cracha-demitido').style.display = 'block';
+                    document.getElementById('cracha-adm2').innerText = colabObj.admissao;
+                    document.getElementById('cracha-dem').innerText = colabObj.demissao;
+                    document.getElementById('box-demissao').style.display = 'block'; // Para caso queira arrumar a data
+                    document.getElementById('input-demissao').value = colabObj.isoDemissao;
+                }
+            }
+
             let validadesDaFuncao = bd.validades.filter(v => v.funcao.toUpperCase() === funcao.toUpperCase());
             let exibicao = {};
 
@@ -620,7 +674,12 @@
                 if(info.status === "Vencido") cl = "status-vencido"; else if(info.status === "Válido") cl = "status-valido"; else cl = "status-neutro";
 
                 let termoBusca = (info.status === 'NÃO ENTREGUE') ? '' : info.epi; 
-                let acoes = `<div style="display:flex; justify-content:center; align-items:center;"><button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')">🚀 Entregar</button>`;
+                let acoes = `<div style="display:flex; justify-content:center; align-items:center;">`;
+                
+                // Só mostra o botão de entregar se a pessoa estiver ativa!
+                if(colabObj && colabObj.ativo) {
+                    acoes += `<button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')">🚀 Entregar</button>`;
+                }
                 
                 if(info.id_item) {
                     acoes += `<button class="btn-editar" onclick="abrirModalEdicao('${info.id_item}', '${info.epi}', '${info.ca}', '${info.qtd}', '${info.duracao_bruta}', '${info.motivo}', '${info.data_iso}')" title="Editar Registro">✏️</button>`;
@@ -629,6 +688,22 @@
                 html += `<tr><td><b>${info.epi}</b></td><td>${info.data}</td><td>${info.ca}</td><td>${info.prox_troca}</td><td><span class="${cl}">${info.status}</span></td><td>${acoes}</td></tr>`;
             });
             document.getElementById('resultado-ficha').innerHTML = html + "</table>";
+        }
+
+        async function salvarDemissao() {
+            let colabNome = document.getElementById('cons-colab').value;
+            let dtDemissao = document.getElementById('input-demissao').value;
+            
+            if(!confirm(`Tem certeza que deseja atualizar a data de desligamento de ${colabNome}?`)) return;
+            
+            mostrarLoading("Atualizando banco de dados...");
+            let p = { acao: "salvar_demissao", nome: colabNome, data_demissao: dtDemissao };
+            
+            try {
+                await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                await recarregarDadosSilenciosamente();
+                alert("✅ Status do colaborador atualizado com sucesso!");
+            } catch(e) { alert("❌ Erro de comunicação."); ocultarLoading(); }
         }
 
         function abrirModalEdicao(id, epiNome, ca, qtd, duracao, motivo, dataIso) {
@@ -655,7 +730,7 @@
                 if(resJSON.sucesso) { 
                     alert("✅ Item Editado com sucesso! A ficha PDF foi atualizada no Drive."); 
                     fecharModalEdicao(); window.open(resJSON.pdf, '_blank'); 
-                    await recarregarDadosSilenciosamente(); // NOVO: Atualiza sem deslogar
+                    await recarregarDadosSilenciosamente(); 
                 } else { alert("❌ Erro ao editar:\n" + resJSON.erro); }
             } catch(e) { alert("❌ Erro de comunicação com a planilha:\n\n" + e.message); }
             btn.innerText = "💾 Confirmar Edição"; btn.disabled = false;
@@ -664,15 +739,17 @@
         async function salvarNovoColab() {
             let p = { acao: "cadastrar_colaborador", matricula: document.getElementById('cad-mat').value, nome: document.getElementById('cad-nome').value, funcao: document.getElementById('cad-func').value, setor: document.getElementById('cad-setor').value, admissao: document.getElementById('cad-adm').value };
             if(!p.nome || !p.setor) return alert("❌ Nome e Setor são obrigatórios!");
+            mostrarLoading("Cadastrando...");
             await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("✅ Colaborador cadastrado!"); 
-            await recarregarDadosSilenciosamente(); // NOVO
+            await recarregarDadosSilenciosamente();
         }
 
         async function salvarEntrada() {
             let p = { acao: "salvar_entrada_estoque", epi: document.getElementById('est-epi').value, qtd: document.getElementById('est-qtd').value, nf: document.getElementById('est-nf').value };
             if(!p.epi || !p.qtd) return alert("❌ Selecione o EPI e digite a Quantidade Comprada!");
-            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("✅ Estoque atualizado!"); 
-            await recarregarDadosSilenciosamente(); // NOVO
+            mostrarLoading("Salvando Compra...");
+            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("✅ Estoque atualizado com sucesso!"); 
+            await recarregarDadosSilenciosamente();
         }
 
         async function gerarRelatorioEstoque() {
