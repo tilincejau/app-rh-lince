@@ -166,11 +166,26 @@
             <div id="cracha-ativo" class="cracha-ativo">🟢 COLABORADOR ATIVO - Admissão: <span id="cracha-adm1"></span></div>
             <div id="cracha-demitido" class="cracha-demissao">🔴 COLABORADOR DESLIGADO - Admissão: <span id="cracha-adm2"></span> | Demissão: <span id="cracha-dem"></span></div>
             
-            <div id="box-demissao" style="display:none; background:#f8f9fa; padding:10px; border-radius:8px; margin-bottom:15px; border: 1px dashed #ccc;">
-                <label class="info-label" style="margin-top:0;">Registrar Desligamento:</label>
-                <div style="display:flex; gap:10px;">
-                    <input type="date" id="input-demissao" class="input-campo" style="margin-bottom:0;">
-                    <button class="btn-secundario" style="margin-bottom:0; background:#dc3545;" onclick="salvarDemissao()">Salvar</button>
+            <div id="box-demissao" style="display:none; background:#f8f9fa; padding:15px; border-radius:8px; margin-bottom:15px; border: 1px dashed #ccc;">
+                <div id="area-demitir">
+                    <label class="info-label" style="margin-top:0;">Registrar ou Editar Desligamento:</label>
+                    <div style="display:flex; gap:10px;">
+                        <input type="date" id="input-demissao" class="input-campo" style="margin-bottom:0;">
+                        <button class="btn-secundario" style="margin-bottom:0; background:#dc3545;" onclick="salvarDemissao()">Salvar</button>
+                    </div>
+                </div>
+                
+                <div id="area-recontratar" style="display:none; margin-top:15px; padding-top:15px; border-top:1px solid #ddd;">
+                    <label class="info-label" style="margin-top:0; color:#1a4d2e;">🔄 O Colaborador Voltou? (Recontratar)</label>
+                    <div style="display:flex; gap:10px;">
+                        <div style="flex:1;">
+                            <span style="font-size:10px; color:#666;">Nova Admissão:</span>
+                            <input type="date" id="input-nova-admissao" class="input-campo" style="margin-bottom:0; padding:10px;">
+                        </div>
+                        <div style="display:flex; align-items:flex-end;">
+                            <button class="btn-sucesso" style="margin-bottom:0; padding:10px 15px;" onclick="recontratarColaborador()">Reativar</button>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -323,8 +338,8 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v22") {
-                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V22. Vá no Script, edite e clique em 'Nova Versão'!");
+                    if(d.versao_backend !== "v23") {
+                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V23. Vá no Script, edite e clique em 'Nova Versão'!");
                         btn.innerText = "Acessar Sistema"; return;
                     }
                     window.usuarioLogado = u; 
@@ -341,7 +356,7 @@
         function verificarVencidosGlobais() {
             window.listaGlobaisVencidos = [];
             bd.colaboradores.forEach(c => {
-                if(!c.ativo) return; // PULA OS DEMITIDOS NO ALERTA GLOBAL
+                if(!c.ativo) return; 
                 let f = bd.fichas[c.nome];
                 if(f) {
                     let episArray = {};
@@ -404,9 +419,7 @@
             let select = document.getElementById(selectId);
             let options = '<option value="">Selecione o Colaborador...</option>';
             bd.colaboradores.sort((a,b) => a.nome.localeCompare(b.nome)).forEach(c => {
-                // Se for pra entregar EPI, não mostra o demitido na lista!
                 if(selectId === 'ent-colab' && !c.ativo) return; 
-
                 if(c.nome.toLowerCase().includes(texto.toLowerCase())) { 
                     let tag = c.ativo ? '' : ' [DESLIGADO]';
                     options += `<option value="${c.nome}">${c.nome} - ${c.funcao}${tag}</option>`; 
@@ -641,15 +654,17 @@
                     document.getElementById('cracha-ativo').style.display = 'block';
                     document.getElementById('cracha-demitido').style.display = 'none';
                     document.getElementById('cracha-adm1').innerText = colabObj.admissao;
-                    document.getElementById('box-demissao').style.display = 'block'; // Mostra botão de demitir
+                    document.getElementById('box-demissao').style.display = 'block'; 
                     document.getElementById('input-demissao').value = "";
+                    document.getElementById('area-recontratar').style.display = 'none';
                 } else {
                     document.getElementById('cracha-ativo').style.display = 'none';
                     document.getElementById('cracha-demitido').style.display = 'block';
                     document.getElementById('cracha-adm2').innerText = colabObj.admissao;
                     document.getElementById('cracha-dem').innerText = colabObj.demissao;
-                    document.getElementById('box-demissao').style.display = 'block'; // Para caso queira arrumar a data
+                    document.getElementById('box-demissao').style.display = 'block'; 
                     document.getElementById('input-demissao').value = colabObj.isoDemissao;
+                    document.getElementById('area-recontratar').style.display = 'block'; // Mostra botão de recontratar!
                 }
             }
 
@@ -676,7 +691,6 @@
                 let termoBusca = (info.status === 'NÃO ENTREGUE') ? '' : info.epi; 
                 let acoes = `<div style="display:flex; justify-content:center; align-items:center;">`;
                 
-                // Só mostra o botão de entregar se a pessoa estiver ativa!
                 if(colabObj && colabObj.ativo) {
                     acoes += `<button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')">🚀 Entregar</button>`;
                 }
@@ -693,16 +707,33 @@
         async function salvarDemissao() {
             let colabNome = document.getElementById('cons-colab').value;
             let dtDemissao = document.getElementById('input-demissao').value;
-            
             if(!confirm(`Tem certeza que deseja atualizar a data de desligamento de ${colabNome}?`)) return;
             
             mostrarLoading("Atualizando banco de dados...");
             let p = { acao: "salvar_demissao", nome: colabNome, data_demissao: dtDemissao };
-            
             try {
                 await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
                 await recarregarDadosSilenciosamente();
                 alert("✅ Status do colaborador atualizado com sucesso!");
+            } catch(e) { alert("❌ Erro de comunicação."); ocultarLoading(); }
+        }
+
+        // NOVO: Função de Recontratação
+        async function recontratarColaborador() {
+            let colabNome = document.getElementById('cons-colab').value;
+            let novaAdm = document.getElementById('input-nova-admissao').value;
+            
+            if(!novaAdm) return alert("❌ Insira a data da nova admissão para recontratar!");
+            if(!confirm(`Deseja realmente reativar o colaborador ${colabNome} com a nova data de admissão?\n\nA data de demissão antiga será apagada, mas todo o histórico de EPIs anteriores dele continuará salvo no sistema.`)) return;
+            
+            mostrarLoading("Reativando colaborador...");
+            let p = { acao: "recontratar_colaborador", nome: colabNome, nova_admissao: novaAdm };
+            
+            try {
+                await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                await recarregarDadosSilenciosamente();
+                alert("✅ Colaborador reativado com sucesso!");
+                document.getElementById('input-nova-admissao').value = '';
             } catch(e) { alert("❌ Erro de comunicação."); ocultarLoading(); }
         }
 
