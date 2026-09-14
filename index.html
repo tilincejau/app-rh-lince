@@ -5,9 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RH - Controle de EPIs</title>
     <style>
-        /* ====================================================
-           DESIGN E CORES PADRÃO LINCE
-           ==================================================== */
         :root {
             --cor-primaria: #1a4d2e;
             --cor-primaria-hover: #133a22;
@@ -46,13 +43,18 @@
         .btn-pdf { background: linear-gradient(135deg, #0b5394, #083c6b); color: white; border: none; border-radius: 10px; padding: 14px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(11, 83, 148, 0.2); transition: transform 0.2s; }
         .btn-pdf:hover { transform: translateY(-2px); box-shadow: 0 6px 15px rgba(11, 83, 148, 0.3); }
 
-        .btn-acao-rapida { background-color: var(--cor-primaria); color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: bold; margin-top: 5px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .btn-acao-rapida { background-color: var(--cor-primaria); color: white; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: bold; margin-top: 5px; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
         .btn-acao-rapida:hover { background-color: var(--cor-primaria-hover); }
+
+        .btn-editar { background-color: #ffc107; color: #000; border: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: bold; margin-top: 5px; margin-left: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .btn-editar:hover { background-color: #e0a800; }
+
+        .btn-whatsapp { background-color: #25D366; color: white; border: none; border-radius: 10px; padding: 12px; font-size: 14px; font-weight: bold; width: 100%; cursor: pointer; margin-top: 10px; box-shadow: 0 4px 10px rgba(37, 211, 102, 0.3); display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .btn-whatsapp:hover { background-color: #128C7E; }
 
         .linha-item { border: 2px dashed #dee2e6; padding: 15px; border-radius: 12px; margin-bottom: 15px; background: #ffffff; position: relative; transition: border-color 0.3s; }
         .linha-item:hover { border-color: var(--cor-primaria); }
         .btn-remover { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 11px; font-weight: bold; transition: background 0.3s; }
-        .btn-remover:hover { background: #c82333; }
         
         canvas { border: 2px dashed var(--cor-primaria); background: #f8f9fa; width: 100%; height: 140px; border-radius: 12px; touch-action: none; margin-bottom: 10px; cursor: crosshair; }
         
@@ -64,6 +66,10 @@
         .status-vencido { color: #dc3545; font-weight: 700; background: #fbe9e7; padding: 4px 8px; border-radius: 4px; display: inline-block;}
         .status-neutro { color: #856404; font-weight: 700; background: #fff3cd; padding: 4px 8px; border-radius: 4px; display: inline-block;}
 
+        /* MODAL DE EDIÇÃO E AVISOS */
+        .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; z-index: 999; padding: 20px; }
+        .modal-box { background: white; padding: 25px; border-radius: 16px; width: 100%; max-width: 400px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; }
+        
         /* AJUSTE MOBILE */
         @media (max-width: 600px) {
             .app-container { padding: 10px; }
@@ -219,6 +225,51 @@
         </div>
     </div>
 
+    <!-- MODAL DE EDIÇÃO DO EPI (LÁPIS) -->
+    <div id="modal-edicao" class="modal-overlay">
+        <div class="modal-box">
+            <h3 style="color:#1a4d2e; margin-top:0;">Editar Histórico</h3>
+            <p id="edit-nome-epi" style="font-weight:bold; text-align:center; color:#555; font-size:14px; margin-bottom:15px;"></p>
+            
+            <input type="hidden" id="edit-id">
+            
+            <label class="info-label">C.A.:</label>
+            <input type="text" id="edit-ca" class="input-campo">
+            
+            <label class="info-label">Quantidade:</label>
+            <input type="number" id="edit-qtd" class="input-campo">
+            
+            <label class="info-label">Duração (Dias):</label>
+            <input type="number" id="edit-duracao" class="input-campo">
+            
+            <label class="info-label">Motivo:</label>
+            <select id="edit-motivo" class="input-campo">
+                <option>1ª Entrega</option>
+                <option>Troca por Desgaste</option>
+                <option>Perda/Dano</option>
+                <option>Extensão do Prazo</option>
+            </select>
+            
+            <button class="btn-principal" id="btn-salvar-edicao" style="margin-top:15px;" onclick="salvarEdicaoItem()">💾 Confirmar Edição</button>
+            <button class="btn-secundario" onclick="fecharModalEdicao()">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- MODAL ALERTA DE VENCIDOS NO LOGIN -->
+    <div id="modal-vencidos" class="modal-overlay">
+        <div class="modal-box" style="text-align:center;">
+            <h2 style="color:#dc3545; margin-top:0;">🚨 ATENÇÃO!</h2>
+            <p style="font-weight:bold; font-size:16px;">O sistema detectou <span id="qtd-vencidos" style="color:#dc3545; font-size:20px;">0</span> itens de EPIs Vencidos na empresa!</p>
+            <p style="font-size:13px; color:#555; margin-bottom:20px;">É necessário realizar a substituição imediata ou extensão de prazo para evitar multas.</p>
+            
+            <button class="btn-whatsapp" onclick="enviarWhatsappGestor()">
+                <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16"> <path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.049-.084-.182-.133-.38-.232z"/> </svg>
+                Notificar Gestor (WhatsApp)
+            </button>
+            <button class="btn-secundario" style="margin-top:10px; margin-bottom:0;" onclick="document.getElementById('modal-vencidos').style.display='none'">Fechar Aviso</button>
+        </div>
+    </div>
+
     <!-- ==========================================
          CÓDIGO JAVASCRIPT DO SISTEMA
          ========================================== -->
@@ -227,6 +278,7 @@
         
         let bd = {}; let itemCount = 0; let b64Foto = ""; let isDrawing = false; let ctx;
         window.statusEpiAtual = {}; 
+        window.listaGlobaisVencidos = [];
 
         async function fazerLogin() {
             let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
@@ -240,12 +292,20 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
+                    if(d.versao_backend !== "v18") {
+                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V18. Vá no Script, edite e clique em 'Nova Versão'!");
+                        btn.innerText = "Acessar Sistema"; return;
+                    }
                     window.usuarioLogado = u; 
                     bd = d.bd; 
                     
                     popularListas(); 
                     abrirTela('tela-menu'); 
                     initPad();
+
+                    // LÓGICA DE VARREDURA DOS VENCIDOS NA EMPRESA!
+                    verificarVencidosGlobais();
+
                 } else { 
                     alert("Acesso Negado: " + (d.erro || "Usuário ou Senha incorretos!")); 
                 }
@@ -253,6 +313,50 @@
                 alert("❌ BLOQUEIO DE REDE (CORS): " + e.message); 
             }
             btn.innerText = "Acessar Sistema";
+        }
+
+        // VARREDURA INTELIGENTE
+        function verificarVencidosGlobais() {
+            window.listaGlobaisVencidos = [];
+            
+            bd.colaboradores.forEach(c => {
+                let f = bd.fichas[c.nome];
+                if(f) {
+                    let episArray = {};
+                    f.forEach(item => {
+                        // Como lê do primeiro ao último, o último (mais atual) vai ficar gravado!
+                        episArray[getBaseEpiName(item.epi)] = item;
+                    });
+                    
+                    Object.values(episArray).forEach(item => {
+                        if(item.status === 'Vencido') {
+                            window.listaGlobaisVencidos.push({
+                                colab: c.nome, epi: item.epi, data: item.prox_troca
+                            });
+                        }
+                    });
+                }
+            });
+
+            // Se achou alguém vencido, dispara o Pop-up!
+            if(window.listaGlobaisVencidos.length > 0) {
+                document.getElementById('qtd-vencidos').innerText = window.listaGlobaisVencidos.length;
+                document.getElementById('modal-vencidos').style.display = 'flex';
+            }
+        }
+
+        // MENSAGEM AUTOMÁTICA DE WHATSAPP
+        function enviarWhatsappGestor() {
+            let msg = "*🚨 RELATÓRIO DE EPIs VENCIDOS 🚨*\n\nO sistema de controle detectou que os seguintes colaboradores precisam de substituição imediata de EPI:\n\n";
+            
+            window.listaGlobaisVencidos.forEach(v => {
+                msg += `👤 *${v.colab}*\n🧤 ${v.epi} (Venceu em: ${v.data})\n\n`;
+            });
+            
+            msg += "Acesse o painel para realizar as trocas ou extensões de prazos.";
+            
+            // Abre o WhatsApp no celular ou no PC já com o texto montado!
+            window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
         }
 
         function abrirTela(id) { document.querySelectorAll('.app-container').forEach(t => t.style.display = 'none'); document.getElementById(id).style.display = 'block'; }
@@ -584,11 +688,10 @@
         }
 
         // =========================================================
-        // MÁGICA DO AGRUPADOR DE FAMÍLIAS DE EPI
+        // EDIÇÃO COM LÁPIS NO HISTÓRICO E AGRUPADOR DE FAMÍLIAS
         // =========================================================
         
         function getBaseEpiName(epiName) {
-            // Remove o tamanho entre parênteses no final do nome. Ex: "BOTA (40)" vira "BOTA"
             return String(epiName).replace(/\s*\([^)]+\)$/, '').trim();
         }
 
@@ -602,36 +705,38 @@
             let validadesDaFuncao = bd.validades.filter(v => v.funcao.toUpperCase() === funcao.toUpperCase());
             let exibicao = {};
 
-            // 1. Cria a base de EPIs obrigatórios agrupando tamanhos
             validadesDaFuncao.forEach(v => {
                 let baseName = getBaseEpiName(v.epi.toUpperCase());
                 if(!exibicao[baseName]) {
                     exibicao[baseName] = { 
+                        id_item: null,
                         epiBase: baseName,
-                        epi: baseName + " (Definir Tamanho)", // Texto exibido quando nunca entregue
-                        data: '---', qtd: '---', ca: '---', prox_troca: '---', status: 'NÃO ENTREGUE' 
+                        epi: baseName + " (Definir Tamanho)", 
+                        data: '---', qtd: '---', ca: '---', duracao_bruta: '', motivo: '', prox_troca: '---', status: 'NÃO ENTREGUE' 
                     };
                 }
             });
 
-            // 2. Olha no Histórico real: Se entregou o 40, atualiza. Se mês que vem entregou o 41, o 41 sobrepõe o 40.
             let historico = bd.fichas[colabNome] || [];
             historico.forEach(h => {
                 let nomeReal = String(h.epi).toUpperCase();
                 let baseName = getBaseEpiName(nomeReal);
                 
                 exibicao[baseName] = {
+                    id_item: h.id_item, // Guarda o ID para poder editar!
                     epiBase: baseName,
-                    epi: h.epi, // Mostra o nome real com o tamanho, ex: BOTA (40)
+                    epi: h.epi, 
                     data: h.data, 
                     qtd: h.qtd, 
                     ca: h.ca, 
+                    duracao_bruta: h.duracao_bruta,
+                    motivo: h.motivo,
                     prox_troca: h.prox_troca, 
                     status: h.status
                 };
             });
 
-            let html = "<table><tr><th>EPI</th><th>Última Data</th><th>C.A.</th><th>Troca</th><th>Status Atual</th><th>Ação Rápida</th></tr>";
+            let html = "<table><tr><th>EPI</th><th>Última Data</th><th>C.A.</th><th>Troca</th><th>Status</th><th>Ações Rápidas</th></tr>";
             
             Object.values(exibicao).forEach(info => {
                 let cl = "";
@@ -639,9 +744,18 @@
                 else if(info.status === "Válido") cl = "status-valido";
                 else cl = "status-neutro";
 
-                // Se não foi entregue, manda vazio para a tela de entrega obrigar o usuário a escolher um tamanho
                 let termoBusca = (info.status === 'NÃO ENTREGUE') ? '' : info.epi; 
-                let btnEntregar = `<button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')">🚀 Entregar Novo</button>`;
+                
+                // Botão de Entrega Rápida
+                let acoes = `<div style="display:flex; justify-content:center; align-items:center;">
+                                <button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')">🚀 Entregar</button>`;
+                
+                // Se já foi entregue antes (tem ID), mostra o botão de Lápis para editar!
+                if(info.id_item) {
+                    acoes += `<button class="btn-editar" onclick="abrirModalEdicao('${info.id_item}', '${info.epi}', '${info.ca}', '${info.qtd}', '${info.duracao_bruta}', '${info.motivo}')" title="Editar Registro">✏️</button>`;
+                }
+                
+                acoes += `</div>`;
 
                 html += `<tr>
                     <td><b>${info.epi}</b></td>
@@ -649,13 +763,81 @@
                     <td>${info.ca}</td>
                     <td>${info.prox_troca}</td>
                     <td><span class="${cl}">${info.status}</span></td>
-                    <td>${btnEntregar}</td>
+                    <td>${acoes}</td>
                 </tr>`;
             });
 
             document.getElementById('resultado-ficha').innerHTML = html + "</table>";
         }
 
+        // =========================================================
+        // FUNÇÕES DO MODAL DE EDIÇÃO
+        // =========================================================
+        function abrirModalEdicao(id, epiNome, ca, qtd, duracao, motivo) {
+            document.getElementById('edit-id').value = id;
+            document.getElementById('edit-nome-epi').innerText = epiNome;
+            document.getElementById('edit-ca').value = ca;
+            document.getElementById('edit-qtd').value = qtd;
+            document.getElementById('edit-duracao').value = duracao;
+            document.getElementById('edit-motivo').value = motivo;
+            
+            document.getElementById('modal-edicao').style.display = 'flex';
+        }
+
+        function fecharModalEdicao() {
+            document.getElementById('modal-edicao').style.display = 'none';
+        }
+
+        async function salvarEdicaoItem() {
+            let id = document.getElementById('edit-id').value;
+            let ca = document.getElementById('edit-ca').value;
+            let qtd = document.getElementById('edit-qtd').value;
+            let duracao = document.getElementById('edit-duracao').value;
+            let motivo = document.getElementById('edit-motivo').value;
+
+            if(!qtd || qtd <= 0 || !ca || !duracao || duracao <= 0) {
+                return alert("❌ Preencha todos os campos do EPI corretamente para salvar a edição!");
+            }
+
+            if(!confirm("⚠️ Tem certeza que deseja alterar este registro na planilha? O PDF será atualizado e sobrescrito.")) {
+                return;
+            }
+
+            let btn = document.getElementById('btn-salvar-edicao');
+            btn.innerText = "Salvando e Atualizando PDF... ⏳";
+            btn.disabled = true;
+
+            let p = {
+                acao: "editar_item",
+                id_item: id,
+                ca: ca,
+                qtd: qtd,
+                duracao: duracao,
+                motivo: motivo
+            };
+
+            try {
+                let response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                let textResult = await response.text();
+                let resJSON = JSON.parse(textResult);
+
+                if(resJSON.sucesso) { 
+                    alert("✅ Item Editado com sucesso! A ficha PDF foi atualizada no Drive."); 
+                    fecharModalEdicao();
+                    window.open(resJSON.pdf, '_blank'); 
+                    location.reload(); 
+                } else { 
+                    alert("❌ Erro ao editar:\n" + resJSON.erro); 
+                }
+            } catch(e) { 
+                alert("❌ Erro de comunicação com a planilha: " + e.message); 
+            }
+            
+            btn.innerText = "💾 Confirmar Edição";
+            btn.disabled = false;
+        }
+
+        // Outros cadastros
         async function salvarNovoColab() {
             let p = { acao: "cadastrar_colaborador", matricula: document.getElementById('cad-mat').value, nome: document.getElementById('cad-nome').value, funcao: document.getElementById('cad-func').value, setor: document.getElementById('cad-setor').value, admissao: document.getElementById('cad-adm').value };
             if(!p.nome || !p.setor) return alert("❌ Nome e Setor são obrigatórios!");
