@@ -296,7 +296,6 @@
         </div>
     </div>
 
-    <!-- SCRIPT -->
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbzO0b-B8n4grYA7GmyiL9AwFinaJTVll9TldFvDOFBhRS9xFAJu9TG-lC6lwN20X7pBQQ/exec";
         
@@ -338,8 +337,8 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v24") {
-                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V24. Vá no Script, edite e clique em 'Nova Versão'!");
+                    if(d.versao_backend !== "v25") {
+                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V25. Vá no Script, edite e clique em 'Nova Versão'!");
                         btn.innerText = "Acessar Sistema"; return;
                     }
                     window.usuarioLogado = u; 
@@ -356,7 +355,7 @@
         function verificarVencidosGlobais() {
             window.listaGlobaisVencidos = [];
             bd.colaboradores.forEach(c => {
-                if(!c.ativo) return; // Se está demitido, NÃO ALERTA!
+                if(!c.ativo) return; 
                 let f = bd.fichas[c.nome];
                 if(f) {
                     let episArray = {};
@@ -376,13 +375,11 @@
             let msg = "*🚨 RELATÓRIO DE EPIs VENCIDOS 🚨*\n\n";
             let agrupado = {};
             
-            // Agrupando por funcionário
             window.listaGlobaisVencidos.forEach(v => {
                 if(!agrupado[v.colab]) agrupado[v.colab] = [];
                 agrupado[v.colab].push(v);
             });
             
-            // Montando o texto elegante
             Object.keys(agrupado).forEach(colab => {
                 msg += `👤 *${colab}*\n`;
                 agrupado[colab].forEach(epi => { msg += `  - ${epi.epi} (Venceu em: ${epi.data})\n`; });
