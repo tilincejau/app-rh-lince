@@ -86,7 +86,6 @@
 
     <datalist id="opcoes-ca"><option value="N/A"></option></datalist>
 
-    <!-- TELA LOGIN -->
     <div id="tela-login" class="app-container">
         <div class="card">
             <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
@@ -100,7 +99,6 @@
         </div>
     </div>
 
-    <!-- TELA MENU -->
     <div id="tela-menu" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -115,7 +113,6 @@
         </div>
     </div>
 
-    <!-- TELA ENTREGA -->
     <div id="tela-entrega" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -149,7 +146,6 @@
         </div>
     </div>
 
-    <!-- TELA CONSULTA -->
     <div id="tela-consulta" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -165,7 +161,6 @@
         </div>
     </div>
 
-    <!-- TELA CADASTRO COLAB -->
     <div id="tela-cadastro-colab" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -194,7 +189,6 @@
         </div>
     </div>
 
-    <!-- TELA ESTOQUE -->
     <div id="tela-estoque" class="app-container" style="display: none;">
         <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
         <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
@@ -225,7 +219,7 @@
         </div>
     </div>
 
-    <!-- MODAL DE EDIÇÃO DO EPI (LÁPIS) -->
+    <!-- MODAL DE EDIÇÃO DO EPI -->
     <div id="modal-edicao" class="modal-overlay">
         <div class="modal-box">
             <h3 style="color:#1a4d2e; margin-top:0;">Editar Histórico</h3>
@@ -255,7 +249,7 @@
         </div>
     </div>
 
-    <!-- MODAL ALERTA DE VENCIDOS NO LOGIN -->
+    <!-- MODAL ALERTA DE VENCIDOS -->
     <div id="modal-vencidos" class="modal-overlay">
         <div class="modal-box" style="text-align:center;">
             <h2 style="color:#dc3545; margin-top:0;">🚨 ATENÇÃO!</h2>
@@ -270,9 +264,7 @@
         </div>
     </div>
 
-    <!-- ==========================================
-         CÓDIGO JAVASCRIPT DO SISTEMA
-         ========================================== -->
+    <!-- SCRIPT -->
     <script>
         const API_URL = "https://script.google.com/macros/s/AKfycbzO0b-B8n4grYA7GmyiL9AwFinaJTVll9TldFvDOFBhRS9xFAJu9TG-lC6lwN20X7pBQQ/exec";
         
@@ -292,8 +284,8 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v18") {
-                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V18. Vá no Script, edite e clique em 'Nova Versão'!");
+                    if(d.versao_backend !== "v19") {
+                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V19. Vá no Script, edite e clique em 'Nova Versão'!");
                         btn.innerText = "Acessar Sistema"; return;
                     }
                     window.usuarioLogado = u; 
@@ -303,7 +295,6 @@
                     abrirTela('tela-menu'); 
                     initPad();
 
-                    // LÓGICA DE VARREDURA DOS VENCIDOS NA EMPRESA!
                     verificarVencidosGlobais();
 
                 } else { 
@@ -315,7 +306,6 @@
             btn.innerText = "Acessar Sistema";
         }
 
-        // VARREDURA INTELIGENTE
         function verificarVencidosGlobais() {
             window.listaGlobaisVencidos = [];
             
@@ -323,39 +313,25 @@
                 let f = bd.fichas[c.nome];
                 if(f) {
                     let episArray = {};
-                    f.forEach(item => {
-                        // Como lê do primeiro ao último, o último (mais atual) vai ficar gravado!
-                        episArray[getBaseEpiName(item.epi)] = item;
-                    });
+                    f.forEach(item => { episArray[getBaseEpiName(item.epi)] = item; });
                     
                     Object.values(episArray).forEach(item => {
                         if(item.status === 'Vencido') {
-                            window.listaGlobaisVencidos.push({
-                                colab: c.nome, epi: item.epi, data: item.prox_troca
-                            });
+                            window.listaGlobaisVencidos.push({ colab: c.nome, epi: item.epi, data: item.prox_troca });
                         }
                     });
                 }
             });
 
-            // Se achou alguém vencido, dispara o Pop-up!
             if(window.listaGlobaisVencidos.length > 0) {
                 document.getElementById('qtd-vencidos').innerText = window.listaGlobaisVencidos.length;
                 document.getElementById('modal-vencidos').style.display = 'flex';
             }
         }
 
-        // MENSAGEM AUTOMÁTICA DE WHATSAPP
         function enviarWhatsappGestor() {
-            let msg = "*🚨 RELATÓRIO DE EPIs VENCIDOS 🚨*\n\nO sistema de controle detectou que os seguintes colaboradores precisam de substituição imediata de EPI:\n\n";
-            
-            window.listaGlobaisVencidos.forEach(v => {
-                msg += `👤 *${v.colab}*\n🧤 ${v.epi} (Venceu em: ${v.data})\n\n`;
-            });
-            
-            msg += "Acesse o painel para realizar as trocas ou extensões de prazos.";
-            
-            // Abre o WhatsApp no celular ou no PC já com o texto montado!
+            let msg = "*🚨 RELATÓRIO DE EPIs VENCIDOS 🚨*\n\nO sistema detectou colaboradores precisando de substituição:\n\n";
+            window.listaGlobaisVencidos.forEach(v => { msg += `👤 *${v.colab}*\n🧤 ${v.epi} (Venceu: ${v.data})\n\n`; });
             window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
         }
 
@@ -374,7 +350,6 @@
         function popularListas() {
             filtrarColab('', 'ent-colab');
             filtrarColab('', 'cons-colab');
-
             let optEPI = '<option value="">Selecione o EPI...</option>';
             bd.epis.sort().forEach(e => optEPI += `<option value="${e}">${e}</option>`);
             document.getElementById('est-epi').innerHTML = optEPI;
@@ -393,7 +368,6 @@
                 }
             });
             select.innerHTML = options;
-            
             if(selectId === 'ent-colab') preencherDadosColab();
             if(selectId === 'cons-colab') carregarFichaColab();
         }
@@ -688,12 +662,9 @@
         }
 
         // =========================================================
-        // EDIÇÃO COM LÁPIS NO HISTÓRICO E AGRUPADOR DE FAMÍLIAS
+        // EDIÇÃO COM LÁPIS NO HISTÓRICO
         // =========================================================
-        
-        function getBaseEpiName(epiName) {
-            return String(epiName).replace(/\s*\([^)]+\)$/, '').trim();
-        }
+        function getBaseEpiName(epiName) { return String(epiName).replace(/\s*\([^)]+\)$/, '').trim(); }
 
         function carregarFichaColab() {
             let colabNome = String(document.getElementById('cons-colab').value).trim().toUpperCase().replace(/\s+/g, ' '); 
@@ -709,9 +680,7 @@
                 let baseName = getBaseEpiName(v.epi.toUpperCase());
                 if(!exibicao[baseName]) {
                     exibicao[baseName] = { 
-                        id_item: null,
-                        epiBase: baseName,
-                        epi: baseName + " (Definir Tamanho)", 
+                        id_item: null, epiBase: baseName, epi: baseName + " (Definir Tamanho)", 
                         data: '---', qtd: '---', ca: '---', duracao_bruta: '', motivo: '', prox_troca: '---', status: 'NÃO ENTREGUE' 
                     };
                 }
@@ -721,18 +690,8 @@
             historico.forEach(h => {
                 let nomeReal = String(h.epi).toUpperCase();
                 let baseName = getBaseEpiName(nomeReal);
-                
                 exibicao[baseName] = {
-                    id_item: h.id_item, // Guarda o ID para poder editar!
-                    epiBase: baseName,
-                    epi: h.epi, 
-                    data: h.data, 
-                    qtd: h.qtd, 
-                    ca: h.ca, 
-                    duracao_bruta: h.duracao_bruta,
-                    motivo: h.motivo,
-                    prox_troca: h.prox_troca, 
-                    status: h.status
+                    id_item: h.id_item, epiBase: baseName, epi: h.epi, data: h.data, qtd: h.qtd, ca: h.ca, duracao_bruta: h.duracao_bruta, motivo: h.motivo, prox_troca: h.prox_troca, status: h.status
                 };
             });
 
@@ -745,16 +704,12 @@
                 else cl = "status-neutro";
 
                 let termoBusca = (info.status === 'NÃO ENTREGUE') ? '' : info.epi; 
-                
-                // Botão de Entrega Rápida
                 let acoes = `<div style="display:flex; justify-content:center; align-items:center;">
                                 <button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')">🚀 Entregar</button>`;
                 
-                // Se já foi entregue antes (tem ID), mostra o botão de Lápis para editar!
                 if(info.id_item) {
                     acoes += `<button class="btn-editar" onclick="abrirModalEdicao('${info.id_item}', '${info.epi}', '${info.ca}', '${info.qtd}', '${info.duracao_bruta}', '${info.motivo}')" title="Editar Registro">✏️</button>`;
                 }
-                
                 acoes += `</div>`;
 
                 html += `<tr>
@@ -770,9 +725,6 @@
             document.getElementById('resultado-ficha').innerHTML = html + "</table>";
         }
 
-        // =========================================================
-        // FUNÇÕES DO MODAL DE EDIÇÃO
-        // =========================================================
         function abrirModalEdicao(id, epiNome, ca, qtd, duracao, motivo) {
             document.getElementById('edit-id').value = id;
             document.getElementById('edit-nome-epi').innerText = epiNome;
@@ -799,7 +751,7 @@
                 return alert("❌ Preencha todos os campos do EPI corretamente para salvar a edição!");
             }
 
-            if(!confirm("⚠️ Tem certeza que deseja alterar este registro na planilha? O PDF será atualizado e sobrescrito.")) {
+            if(!confirm("⚠️ Tem certeza que deseja alterar este registro? O PDF da ficha do Colaborador será sobrescrito e atualizado no Drive.")) {
                 return;
             }
 
@@ -809,11 +761,7 @@
 
             let p = {
                 acao: "editar_item",
-                id_item: id,
-                ca: ca,
-                qtd: qtd,
-                duracao: duracao,
-                motivo: motivo
+                id_item: id, ca: ca, qtd: qtd, duracao: duracao, motivo: motivo
             };
 
             try {
@@ -837,7 +785,6 @@
             btn.disabled = false;
         }
 
-        // Outros cadastros
         async function salvarNovoColab() {
             let p = { acao: "cadastrar_colaborador", matricula: document.getElementById('cad-mat').value, nome: document.getElementById('cad-nome').value, funcao: document.getElementById('cad-func').value, setor: document.getElementById('cad-setor').value, admissao: document.getElementById('cad-adm').value };
             if(!p.nome || !p.setor) return alert("❌ Nome e Setor são obrigatórios!");
