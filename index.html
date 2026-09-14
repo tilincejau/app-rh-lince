@@ -322,7 +322,7 @@
                     else if (document.getElementById('tela-entrega').style.display === 'block') { abrirTelaEntrega(); }
                     verificarVencidosGlobais();
                 }
-            } catch(e) { console.error("Erro na sincronização oculta", e); }
+            } catch(e) { console.error("Erro na sincronização", e); }
             ocultarLoading();
         }
 
@@ -338,8 +338,8 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v23") {
-                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V23. Vá no Script, edite e clique em 'Nova Versão'!");
+                    if(d.versao_backend !== "v24") {
+                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V24. Vá no Script, edite e clique em 'Nova Versão'!");
                         btn.innerText = "Acessar Sistema"; return;
                     }
                     window.usuarioLogado = u; 
@@ -356,7 +356,7 @@
         function verificarVencidosGlobais() {
             window.listaGlobaisVencidos = [];
             bd.colaboradores.forEach(c => {
-                if(!c.ativo) return; 
+                if(!c.ativo) return; // Se está demitido, NÃO ALERTA!
                 let f = bd.fichas[c.nome];
                 if(f) {
                     let episArray = {};
@@ -376,11 +376,13 @@
             let msg = "*🚨 RELATÓRIO DE EPIs VENCIDOS 🚨*\n\n";
             let agrupado = {};
             
+            // Agrupando por funcionário
             window.listaGlobaisVencidos.forEach(v => {
                 if(!agrupado[v.colab]) agrupado[v.colab] = [];
                 agrupado[v.colab].push(v);
             });
             
+            // Montando o texto elegante
             Object.keys(agrupado).forEach(colab => {
                 msg += `👤 *${colab}*\n`;
                 agrupado[colab].forEach(epi => { msg += `  - ${epi.epi} (Venceu em: ${epi.data})\n`; });
@@ -664,7 +666,7 @@
                     document.getElementById('cracha-dem').innerText = colabObj.demissao;
                     document.getElementById('box-demissao').style.display = 'block'; 
                     document.getElementById('input-demissao').value = colabObj.isoDemissao;
-                    document.getElementById('area-recontratar').style.display = 'block'; // Mostra botão de recontratar!
+                    document.getElementById('area-recontratar').style.display = 'block';
                 }
             }
 
@@ -718,13 +720,12 @@
             } catch(e) { alert("❌ Erro de comunicação."); ocultarLoading(); }
         }
 
-        // NOVO: Função de Recontratação
         async function recontratarColaborador() {
             let colabNome = document.getElementById('cons-colab').value;
             let novaAdm = document.getElementById('input-nova-admissao').value;
             
             if(!novaAdm) return alert("❌ Insira a data da nova admissão para recontratar!");
-            if(!confirm(`Deseja realmente reativar o colaborador ${colabNome} com a nova data de admissão?\n\nA data de demissão antiga será apagada, mas todo o histórico de EPIs anteriores dele continuará salvo no sistema.`)) return;
+            if(!confirm(`Deseja realmente reativar o colaborador ${colabNome} com a nova data de admissão?\n\nA data de demissão antiga será apagada, mas todo o histórico de EPIs anteriores continuará salvo na ficha PDF gerada daqui pra frente.`)) return;
             
             mostrarLoading("Reativando colaborador...");
             let p = { acao: "recontratar_colaborador", nome: colabNome, nova_admissao: novaAdm };
