@@ -66,11 +66,9 @@
         .status-vencido { color: #dc3545; font-weight: 700; background: #fbe9e7; padding: 4px 8px; border-radius: 4px; display: inline-block;}
         .status-neutro { color: #856404; font-weight: 700; background: #fff3cd; padding: 4px 8px; border-radius: 4px; display: inline-block;}
 
-        /* MODAL DE EDIÇÃO E AVISOS */
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; z-index: 999; padding: 20px; }
         .modal-box { background: white; padding: 25px; border-radius: 16px; width: 100%; max-width: 400px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; }
         
-        /* AJUSTE MOBILE */
         @media (max-width: 600px) {
             .app-container { padding: 10px; }
             .card { padding: 15px; }
@@ -226,6 +224,9 @@
             <p id="edit-nome-epi" style="font-weight:bold; text-align:center; color:#555; font-size:14px; margin-bottom:15px;"></p>
             
             <input type="hidden" id="edit-id">
+
+            <label class="info-label">Data e Hora da Entrega:</label>
+            <input type="datetime-local" id="edit-data" class="input-campo">
             
             <label class="info-label">C.A.:</label>
             <input type="text" id="edit-ca" class="input-campo">
@@ -249,7 +250,6 @@
         </div>
     </div>
 
-    <!-- MODAL ALERTA DE VENCIDOS -->
     <div id="modal-vencidos" class="modal-overlay">
         <div class="modal-box" style="text-align:center;">
             <h2 style="color:#dc3545; margin-top:0;">🚨 ATENÇÃO!</h2>
@@ -284,8 +284,8 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v19") {
-                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V19. Vá no Script, edite e clique em 'Nova Versão'!");
+                    if(d.versao_backend !== "v20") {
+                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V20. Vá no Script, edite e clique em 'Nova Versão'!");
                         btn.innerText = "Acessar Sistema"; return;
                     }
                     window.usuarioLogado = u; 
@@ -294,7 +294,6 @@
                     popularListas(); 
                     abrirTela('tela-menu'); 
                     initPad();
-
                     verificarVencidosGlobais();
 
                 } else { 
@@ -661,9 +660,6 @@
             btn.disabled = false;
         }
 
-        // =========================================================
-        // EDIÇÃO COM LÁPIS NO HISTÓRICO
-        // =========================================================
         function getBaseEpiName(epiName) { return String(epiName).replace(/\s*\([^)]+\)$/, '').trim(); }
 
         function carregarFichaColab() {
@@ -681,7 +677,7 @@
                 if(!exibicao[baseName]) {
                     exibicao[baseName] = { 
                         id_item: null, epiBase: baseName, epi: baseName + " (Definir Tamanho)", 
-                        data: '---', qtd: '---', ca: '---', duracao_bruta: '', motivo: '', prox_troca: '---', status: 'NÃO ENTREGUE' 
+                        data: '---', data_iso: '', qtd: '---', ca: '---', duracao_bruta: '', motivo: '', prox_troca: '---', status: 'NÃO ENTREGUE' 
                     };
                 }
             });
@@ -691,7 +687,7 @@
                 let nomeReal = String(h.epi).toUpperCase();
                 let baseName = getBaseEpiName(nomeReal);
                 exibicao[baseName] = {
-                    id_item: h.id_item, epiBase: baseName, epi: h.epi, data: h.data, qtd: h.qtd, ca: h.ca, duracao_bruta: h.duracao_bruta, motivo: h.motivo, prox_troca: h.prox_troca, status: h.status
+                    id_item: h.id_item, epiBase: baseName, epi: h.epi, data: h.data, data_iso: h.data_iso, qtd: h.qtd, ca: h.ca, duracao_bruta: h.duracao_bruta, motivo: h.motivo, prox_troca: h.prox_troca, status: h.status
                 };
             });
 
@@ -708,7 +704,7 @@
                                 <button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')">🚀 Entregar</button>`;
                 
                 if(info.id_item) {
-                    acoes += `<button class="btn-editar" onclick="abrirModalEdicao('${info.id_item}', '${info.epi}', '${info.ca}', '${info.qtd}', '${info.duracao_bruta}', '${info.motivo}')" title="Editar Registro">✏️</button>`;
+                    acoes += `<button class="btn-editar" onclick="abrirModalEdicao('${info.id_item}', '${info.epi}', '${info.ca}', '${info.qtd}', '${info.duracao_bruta}', '${info.motivo}', '${info.data_iso}')" title="Editar Registro">✏️</button>`;
                 }
                 acoes += `</div>`;
 
@@ -725,13 +721,14 @@
             document.getElementById('resultado-ficha').innerHTML = html + "</table>";
         }
 
-        function abrirModalEdicao(id, epiNome, ca, qtd, duracao, motivo) {
+        function abrirModalEdicao(id, epiNome, ca, qtd, duracao, motivo, dataIso) {
             document.getElementById('edit-id').value = id;
             document.getElementById('edit-nome-epi').innerText = epiNome;
             document.getElementById('edit-ca').value = ca;
             document.getElementById('edit-qtd').value = qtd;
             document.getElementById('edit-duracao').value = duracao;
             document.getElementById('edit-motivo').value = motivo;
+            document.getElementById('edit-data').value = dataIso; // NOVO: Preenche a data
             
             document.getElementById('modal-edicao').style.display = 'flex';
         }
@@ -746,8 +743,9 @@
             let qtd = document.getElementById('edit-qtd').value;
             let duracao = document.getElementById('edit-duracao').value;
             let motivo = document.getElementById('edit-motivo').value;
+            let dataHora = document.getElementById('edit-data').value; // NOVO: Coleta a data alterada
 
-            if(!qtd || qtd <= 0 || !ca || !duracao || duracao <= 0) {
+            if(!qtd || qtd <= 0 || !ca || !duracao || duracao <= 0 || !dataHora) {
                 return alert("❌ Preencha todos os campos do EPI corretamente para salvar a edição!");
             }
 
@@ -761,13 +759,19 @@
 
             let p = {
                 acao: "editar_item",
-                id_item: id, ca: ca, qtd: qtd, duracao: duracao, motivo: motivo
+                id_item: id, ca: ca, qtd: qtd, duracao: duracao, motivo: motivo, data_hora: dataHora // Envia a data para o Google
             };
 
             try {
                 let response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
                 let textResult = await response.text();
-                let resJSON = JSON.parse(textResult);
+                
+                let resJSON;
+                try {
+                    resJSON = JSON.parse(textResult);
+                } catch(jsonErr) {
+                    throw new Error("O Google não conseguiu processar. Verifique se o código V20 foi implantado corretamente.\n\nDetalhe técnico: " + textResult.substring(0, 100));
+                }
 
                 if(resJSON.sucesso) { 
                     alert("✅ Item Editado com sucesso! A ficha PDF foi atualizada no Drive."); 
@@ -778,7 +782,7 @@
                     alert("❌ Erro ao editar:\n" + resJSON.erro); 
                 }
             } catch(e) { 
-                alert("❌ Erro de comunicação com a planilha: " + e.message); 
+                alert("❌ Erro de comunicação com a planilha:\n\n" + e.message); 
             }
             
             btn.innerText = "💾 Confirmar Edição";
