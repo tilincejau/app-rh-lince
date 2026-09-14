@@ -337,8 +337,8 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v25") {
-                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V25. Vá no Script, edite e clique em 'Nova Versão'!");
+                    if(d.versao_backend !== "v26") {
+                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V26. Vá no Script, edite e clique em 'Nova Versão'!");
                         btn.innerText = "Acessar Sistema"; return;
                     }
                     window.usuarioLogado = u; 
