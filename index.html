@@ -69,6 +69,10 @@
         .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; z-index: 999; padding: 20px; }
         .modal-box { background: white; padding: 25px; border-radius: 16px; width: 100%; max-width: 400px; box-shadow: 0 15px 35px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; }
         
+        #loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.9); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; font-weight: bold; color: var(--cor-primaria); }
+        .spinner { border: 4px solid rgba(0,0,0,0.1); border-left-color: var(--cor-primaria); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
         @media (max-width: 600px) {
             .app-container { padding: 10px; }
             .card { padding: 15px; }
@@ -83,6 +87,7 @@
 <body>
 
     <datalist id="opcoes-ca"><option value="N/A"></option></datalist>
+    <div id="loading-overlay"><div class="spinner"></div><span id="loading-msg">Sincronizando...</span></div>
 
     <div id="tela-login" class="app-container">
         <div class="card">
@@ -222,7 +227,6 @@
         <div class="modal-box">
             <h3 style="color:#1a4d2e; margin-top:0;">Editar Histórico</h3>
             <p id="edit-nome-epi" style="font-weight:bold; text-align:center; color:#555; font-size:14px; margin-bottom:15px;"></p>
-            
             <input type="hidden" id="edit-id">
 
             <label class="info-label">Data e Hora da Entrega:</label>
@@ -250,6 +254,7 @@
         </div>
     </div>
 
+    <!-- MODAL ALERTA DE VENCIDOS -->
     <div id="modal-vencidos" class="modal-overlay">
         <div class="modal-box" style="text-align:center;">
             <h2 style="color:#dc3545; margin-top:0;">🚨 ATENÇÃO!</h2>
@@ -272,6 +277,28 @@
         window.statusEpiAtual = {}; 
         window.listaGlobaisVencidos = [];
 
+        function mostrarLoading(msg) {
+            document.getElementById('loading-msg').innerText = msg;
+            document.getElementById('loading-overlay').style.display = 'flex';
+        }
+        function ocultarLoading() { document.getElementById('loading-overlay').style.display = 'none'; }
+
+        async function recarregarDadosSilenciosamente() {
+            mostrarLoading("Atualizando Telas...");
+            try {
+                let r2 = await fetch(`${API_URL}?acao=buscar_inicial`);
+                let d2 = await r2.json();
+                if(d2.sucesso) {
+                    bd = d2;
+                    popularListas();
+                    if(document.getElementById('tela-consulta').style.display === 'block') { carregarFichaColab(); } 
+                    else if (document.getElementById('tela-entrega').style.display === 'block') { abrirTelaEntrega(); }
+                    verificarVencidosGlobais();
+                }
+            } catch(e) { console.error("Erro na sincronização oculta", e); }
+            ocultarLoading();
+        }
+
         async function fazerLogin() {
             let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
             if(!u || !s) return alert("Preencha Usuário e Senha para continuar!");
@@ -284,44 +311,33 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v20") {
-                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V20. Vá no Script, edite e clique em 'Nova Versão'!");
+                    if(d.versao_backend !== "v21") {
+                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V21. Vá no Script, edite e clique em 'Nova Versão'!");
                         btn.innerText = "Acessar Sistema"; return;
                     }
                     window.usuarioLogado = u; 
                     bd = d.bd; 
-                    
                     popularListas(); 
                     abrirTela('tela-menu'); 
                     initPad();
                     verificarVencidosGlobais();
-
-                } else { 
-                    alert("Acesso Negado: " + (d.erro || "Usuário ou Senha incorretos!")); 
-                }
-            } catch(e) { 
-                alert("❌ BLOQUEIO DE REDE (CORS): " + e.message); 
-            }
+                } else { alert("Acesso Negado: " + (d.erro || "Usuário ou Senha incorretos!")); }
+            } catch(e) { alert("❌ BLOQUEIO DE REDE (CORS): " + e.message); }
             btn.innerText = "Acessar Sistema";
         }
 
         function verificarVencidosGlobais() {
             window.listaGlobaisVencidos = [];
-            
             bd.colaboradores.forEach(c => {
                 let f = bd.fichas[c.nome];
                 if(f) {
                     let episArray = {};
                     f.forEach(item => { episArray[getBaseEpiName(item.epi)] = item; });
-                    
                     Object.values(episArray).forEach(item => {
-                        if(item.status === 'Vencido') {
-                            window.listaGlobaisVencidos.push({ colab: c.nome, epi: item.epi, data: item.prox_troca });
-                        }
+                        if(item.status === 'Vencido') { window.listaGlobaisVencidos.push({ colab: c.nome, epi: item.epi, data: item.prox_troca }); }
                     });
                 }
             });
-
             if(window.listaGlobaisVencidos.length > 0) {
                 document.getElementById('qtd-vencidos').innerText = window.listaGlobaisVencidos.length;
                 document.getElementById('modal-vencidos').style.display = 'flex';
@@ -362,9 +378,7 @@
             let select = document.getElementById(selectId);
             let options = '<option value="">Selecione o Colaborador...</option>';
             bd.colaboradores.sort((a,b) => a.nome.localeCompare(b.nome)).forEach(c => {
-                if(c.nome.toLowerCase().includes(texto.toLowerCase())) {
-                    options += `<option value="${c.nome}">${c.nome} - ${c.funcao}</option>`;
-                }
+                if(c.nome.toLowerCase().includes(texto.toLowerCase())) { options += `<option value="${c.nome}">${c.nome} - ${c.funcao}</option>`; }
             });
             select.innerHTML = options;
             if(selectId === 'ent-colab') preencherDadosColab();
@@ -444,10 +458,7 @@
             window.statusEpiAtual = {};
             let cNome = String(nome).trim().toUpperCase().replace(/\s+/g, ' ');
             let f = bd.fichas[cNome];
-            if(f) {
-                f.forEach(item => { window.statusEpiAtual[String(item.epi).trim().toUpperCase()] = item.prox_troca; });
-            }
-
+            if(f) { f.forEach(item => { window.statusEpiAtual[String(item.epi).trim().toUpperCase()] = item.prox_troca; }); }
             document.getElementById('container-itens-epi').innerHTML = "";
             itemCount = 0;
         }
@@ -465,7 +476,6 @@
             filtrarColab(colabConsulta, 'ent-colab');
             document.getElementById('ent-colab').value = colabConsulta;
             preencherDadosColab(); 
-
             adicionarItemEPI(epiNome);
         }
 
@@ -480,39 +490,18 @@
             div.innerHTML = `
                 <button class="btn-remover" onclick="removerItemEPI(this)">Remover</button>
                 <span class="info-label" style="color:var(--cor-primaria); font-size:14px;">EPI #${itemCount}</span>
-                
-                <label class="info-label">EPI Entregue:</label>
-                <select class="input-campo sel-epi" onchange="aoMudarEpi(this)">${opcoesDinamicas}</select>
-                
+                <label class="info-label">EPI Entregue:</label><select class="input-campo sel-epi" onchange="aoMudarEpi(this)">${opcoesDinamicas}</select>
                 <div style="display:flex; gap:10px;">
-                    <div style="flex:1;">
-                        <label class="info-label">Quantidade:</label>
-                        <input type="number" class="input-campo sel-qtd" value="1" min="1">
-                    </div>
-                    <div style="flex:2;">
-                        <label class="info-label">C.A. (Ex: 12345 ou N/A):</label>
-                        <input type="text" class="input-campo sel-ca" list="opcoes-ca" placeholder="Nº do C.A.">
-                    </div>
+                    <div style="flex:1;"><label class="info-label">Quantidade:</label><input type="number" class="input-campo sel-qtd" value="1" min="1"></div>
+                    <div style="flex:2;"><label class="info-label">C.A. (Ex: 12345 ou N/A):</label><input type="text" class="input-campo sel-ca" list="opcoes-ca" placeholder="Nº do C.A."></div>
                 </div>
-                
                 <div style="display:flex; gap:10px;">
-                    <div style="flex:1;">
-                        <label class="info-label">Duração (Dias):</label>
-                        <input type="number" class="input-campo sel-duracao" oninput="recalcularTrocaManual(this)" placeholder="Ex: 90" readonly>
-                    </div>
-                    <div style="flex:1;">
-                        <label class="info-label">Próxima Troca:</label>
-                        <input type="text" class="input-campo sel-proxtroca" readonly style="background:#e9ecef; text-align:center;" value="---">
-                    </div>
+                    <div style="flex:1;"><label class="info-label">Duração (Dias):</label><input type="number" class="input-campo sel-duracao" oninput="recalcularTrocaManual(this)" placeholder="Ex: 90" readonly></div>
+                    <div style="flex:1;"><label class="info-label">Próxima Troca:</label><input type="text" class="input-campo sel-proxtroca" readonly style="background:#e9ecef; text-align:center;" value="---"></div>
                 </div>
-
                 <label class="info-label">Motivo da Entrega:</label>
                 <select class="input-campo sel-motivo">
-                    <option value="">Selecione o motivo...</option>
-                    <option>1ª Entrega</option>
-                    <option>Troca por Desgaste</option>
-                    <option>Perda/Dano</option>
-                    <option>Extensão do Prazo</option>
+                    <option value="">Selecione o motivo...</option><option>1ª Entrega</option><option>Troca por Desgaste</option><option>Perda/Dano</option><option>Extensão do Prazo</option>
                 </select>
             `;
             document.getElementById('container-itens-epi').appendChild(div);
@@ -522,65 +511,33 @@
                 let selects = document.querySelectorAll('.sel-epi');
                 let ultimoSelect = selects[selects.length - 1];
                 let optionExists = Array.from(ultimoSelect.options).some(opt => opt.value === epiPreSelecionado);
-                if(optionExists) {
-                    ultimoSelect.value = epiPreSelecionado;
-                    aoMudarEpi(ultimoSelect);
-                }
+                if(optionExists) { ultimoSelect.value = epiPreSelecionado; aoMudarEpi(ultimoSelect); }
             }
         }
 
-        function aoMudarEpi(selectEl) {
-            buscarValidade(selectEl);
-            atualizarTodosDropdownsEpi();
-        }
-
-        function removerItemEPI(btn) {
-            btn.closest('.linha-item').remove();
-            atualizarTodosDropdownsEpi();
-        }
-
-        function recalcularTodasAsValidades() {
-            document.querySelectorAll('.sel-duracao').forEach(input => {
-                if(input.value !== "") recalcularTrocaManual(input);
-            });
-        }
+        function aoMudarEpi(selectEl) { buscarValidade(selectEl); atualizarTodosDropdownsEpi(); }
+        function removerItemEPI(btn) { btn.closest('.linha-item').remove(); atualizarTodosDropdownsEpi(); }
+        function recalcularTodasAsValidades() { document.querySelectorAll('.sel-duracao').forEach(input => { if(input.value !== "") recalcularTrocaManual(input); }); }
 
         function buscarValidade(selectEl) {
             let epi = selectEl.value; let func = document.getElementById('ent-funcao').value;
             let val = bd.validades.find(v => String(v.epi).trim().toUpperCase() === String(epi).trim().toUpperCase() && String(v.funcao).trim().toUpperCase() === String(func).trim().toUpperCase());
-            let box = selectEl.closest('.linha-item');
-            let inputDuracao = box.querySelector('.sel-duracao');
+            let box = selectEl.closest('.linha-item'); let inputDuracao = box.querySelector('.sel-duracao');
             
             if(val) { 
-                inputDuracao.value = val.dias; 
-                inputDuracao.setAttribute('readonly', 'true');
-                inputDuracao.style.backgroundColor = "#e9ecef";
-                box.querySelector('.sel-qtd').value = val.qtd || 1; 
-                recalcularTrocaManual(inputDuracao);
-            }
-            else { 
-                inputDuracao.value = ""; 
-                inputDuracao.removeAttribute('readonly');
-                inputDuracao.style.backgroundColor = "#ffffff";
-                box.querySelector('.sel-proxtroca').value = "---";
+                inputDuracao.value = val.dias; inputDuracao.setAttribute('readonly', 'true'); inputDuracao.style.backgroundColor = "#e9ecef"; box.querySelector('.sel-qtd').value = val.qtd || 1; recalcularTrocaManual(inputDuracao);
+            } else { 
+                inputDuracao.value = ""; inputDuracao.removeAttribute('readonly'); inputDuracao.style.backgroundColor = "#ffffff"; box.querySelector('.sel-proxtroca').value = "---";
             }
         }
 
         function recalcularTrocaManual(inputDuracao) {
-            let box = inputDuracao.closest('.linha-item');
-            let dias = parseInt(inputDuracao.value);
-            let dtInput = document.getElementById('ent-data').value;
-
+            let box = inputDuracao.closest('.linha-item'); let dias = parseInt(inputDuracao.value); let dtInput = document.getElementById('ent-data').value;
             if(dias > 0 && dtInput) {
-                let d = new Date(dtInput);
-                d.setDate(d.getDate() + dias);
-                let dia = String(d.getDate()).padStart(2, '0');
-                let mes = String(d.getMonth() + 1).padStart(2, '0');
-                let ano = d.getFullYear();
+                let d = new Date(dtInput); d.setDate(d.getDate() + dias);
+                let dia = String(d.getDate()).padStart(2, '0'); let mes = String(d.getMonth() + 1).padStart(2, '0'); let ano = d.getFullYear();
                 box.querySelector('.sel-proxtroca').value = `${dia}/${mes}/${ano}`;
-            } else {
-                box.querySelector('.sel-proxtroca').value = "---";
-            }
+            } else { box.querySelector('.sel-proxtroca').value = "---"; }
         }
 
         function initPad() {
@@ -599,46 +556,26 @@
         }
 
         async function salvarEntrega() {
-            let colab = document.getElementById('ent-colab').value;
-            let dt = document.getElementById('ent-data').value;
-            
+            let colab = document.getElementById('ent-colab').value; let dt = document.getElementById('ent-data').value;
             if(!dt) return alert("❌ A Data e Hora da entrega é obrigatória!");
             if(!colab) return alert("❌ Selecione o Colaborador na lista!");
-            
             let blocosDeItens = document.querySelectorAll('.linha-item');
             if(blocosDeItens.length === 0) return alert("❌ Você precisa adicionar pelo menos um EPI à ficha!");
             
             let itens = [];
             for (let i = 0; i < blocosDeItens.length; i++) {
                 let box = blocosDeItens[i];
-                let epi = box.querySelector('.sel-epi').value;
-                let qtd = box.querySelector('.sel-qtd').value;
-                let ca = box.querySelector('.sel-ca').value;
-                let duracao = box.querySelector('.sel-duracao').value;
-                let motivo = box.querySelector('.sel-motivo').value;
-                
-                let numItem = i + 1;
-                if(!epi) return alert(`❌ Selecione qual é o EPI no Item #${numItem}!`);
-                if(!qtd || qtd <= 0) return alert(`❌ Informe a Quantidade válida no Item #${numItem}!`);
-                if(!ca) return alert(`❌ Preencha o C.A. no Item #${numItem}!`);
-                if(!duracao || duracao <= 0) return alert(`❌ Digite a Duração (em dias) do EPI no Item #${numItem}!`);
-                if(!motivo) return alert(`❌ Selecione o Motivo da entrega no Item #${numItem}!`);
-                
+                let epi = box.querySelector('.sel-epi').value; let qtd = box.querySelector('.sel-qtd').value; let ca = box.querySelector('.sel-ca').value; let duracao = box.querySelector('.sel-duracao').value; let motivo = box.querySelector('.sel-motivo').value;
+                if(!epi || !qtd || !ca || !duracao || !motivo) return alert(`❌ Preencha todos os campos do Item #${i + 1}!`);
                 itens.push({ epi: epi, qtd: qtd, ca: ca, motivo: motivo, duracao: duracao });
             }
-
             if(!document.getElementById('canvas-ass').getAttribute('d')) return alert("❌ A Assinatura do Colaborador é obrigatória!");
             
             let p = {
-                acao: "salvar_entrega", colaborador: colab, data_hora: dt,
-                matricula: document.getElementById('ent-matricula').value, admissao: document.getElementById('ent-admissao').value,
-                funcao: document.getElementById('ent-funcao').value, setor: document.getElementById('ent-setor').value,
-                assinatura: document.getElementById('canvas-ass').toDataURL(), foto: b64Foto, itens: itens
+                acao: "salvar_entrega", colaborador: colab, data_hora: dt, matricula: document.getElementById('ent-matricula').value, admissao: document.getElementById('ent-admissao').value, funcao: document.getElementById('ent-funcao').value, setor: document.getElementById('ent-setor').value, assinatura: document.getElementById('canvas-ass').toDataURL(), foto: b64Foto, itens: itens
             };
 
-            let btn = document.getElementById('btn-salvar-entrega');
-            btn.innerText = "Enviando e Gerando PDF... ⏳";
-            btn.disabled = true;
+            let btn = document.getElementById('btn-salvar-entrega'); btn.innerText = "Enviando e Gerando PDF... ⏳"; btn.disabled = true;
 
             try {
                 let response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
@@ -646,18 +583,12 @@
                 let resJSON = JSON.parse(textResult);
 
                 if(resJSON.sucesso) { 
-                    alert("✅ Entrega salva com sucesso! O PDF foi gerado."); 
-                    window.open(resJSON.pdf, '_blank'); 
-                    location.reload(); 
-                } else { 
-                    alert("❌ Erro retornado pelo Google:\n" + resJSON.erro); 
-                }
-            } catch(e) { 
-                alert("❌ Erro de comunicação: " + e.message); 
-            }
+                    alert("✅ Entrega salva com sucesso! O PDF foi gerado."); window.open(resJSON.pdf, '_blank'); 
+                    await recarregarDadosSilenciosamente(); // NOVO: Não desloga
+                } else { alert("❌ Erro:\n" + resJSON.erro); }
+            } catch(e) { alert("❌ Erro de comunicação: " + e.message); }
             
-            btn.innerText = "💾 Finalizar e Gerar PDF";
-            btn.disabled = false;
+            btn.innerText = "💾 Finalizar e Gerar PDF"; btn.disabled = false;
         }
 
         function getBaseEpiName(epiName) { return String(epiName).replace(/\s*\([^)]+\)$/, '').trim(); }
@@ -668,157 +599,90 @@
 
             let colabObj = bd.colaboradores.find(c => c.nome.toUpperCase() === colabNome);
             let funcao = colabObj ? colabObj.funcao : "";
-
             let validadesDaFuncao = bd.validades.filter(v => v.funcao.toUpperCase() === funcao.toUpperCase());
             let exibicao = {};
 
             validadesDaFuncao.forEach(v => {
                 let baseName = getBaseEpiName(v.epi.toUpperCase());
-                if(!exibicao[baseName]) {
-                    exibicao[baseName] = { 
-                        id_item: null, epiBase: baseName, epi: baseName + " (Definir Tamanho)", 
-                        data: '---', data_iso: '', qtd: '---', ca: '---', duracao_bruta: '', motivo: '', prox_troca: '---', status: 'NÃO ENTREGUE' 
-                    };
-                }
+                if(!exibicao[baseName]) { exibicao[baseName] = { id_item: null, epiBase: baseName, epi: baseName + " (Definir Tamanho)", data: '---', data_iso: '', qtd: '---', ca: '---', duracao_bruta: '', motivo: '', prox_troca: '---', status: 'NÃO ENTREGUE' }; }
             });
 
             let historico = bd.fichas[colabNome] || [];
             historico.forEach(h => {
-                let nomeReal = String(h.epi).toUpperCase();
-                let baseName = getBaseEpiName(nomeReal);
-                exibicao[baseName] = {
-                    id_item: h.id_item, epiBase: baseName, epi: h.epi, data: h.data, data_iso: h.data_iso, qtd: h.qtd, ca: h.ca, duracao_bruta: h.duracao_bruta, motivo: h.motivo, prox_troca: h.prox_troca, status: h.status
-                };
+                let nomeReal = String(h.epi).toUpperCase(); let baseName = getBaseEpiName(nomeReal);
+                exibicao[baseName] = { id_item: h.id_item, epiBase: baseName, epi: h.epi, data: h.data, data_iso: h.data_iso, qtd: h.qtd, ca: h.ca, duracao_bruta: h.duracao_bruta, motivo: h.motivo, prox_troca: h.prox_troca, status: h.status };
             });
 
             let html = "<table><tr><th>EPI</th><th>Última Data</th><th>C.A.</th><th>Troca</th><th>Status</th><th>Ações Rápidas</th></tr>";
             
             Object.values(exibicao).forEach(info => {
                 let cl = "";
-                if(info.status === "Vencido") cl = "status-vencido";
-                else if(info.status === "Válido") cl = "status-valido";
-                else cl = "status-neutro";
+                if(info.status === "Vencido") cl = "status-vencido"; else if(info.status === "Válido") cl = "status-valido"; else cl = "status-neutro";
 
                 let termoBusca = (info.status === 'NÃO ENTREGUE') ? '' : info.epi; 
-                let acoes = `<div style="display:flex; justify-content:center; align-items:center;">
-                                <button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')">🚀 Entregar</button>`;
+                let acoes = `<div style="display:flex; justify-content:center; align-items:center;"><button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')">🚀 Entregar</button>`;
                 
                 if(info.id_item) {
                     acoes += `<button class="btn-editar" onclick="abrirModalEdicao('${info.id_item}', '${info.epi}', '${info.ca}', '${info.qtd}', '${info.duracao_bruta}', '${info.motivo}', '${info.data_iso}')" title="Editar Registro">✏️</button>`;
                 }
                 acoes += `</div>`;
-
-                html += `<tr>
-                    <td><b>${info.epi}</b></td>
-                    <td>${info.data}</td>
-                    <td>${info.ca}</td>
-                    <td>${info.prox_troca}</td>
-                    <td><span class="${cl}">${info.status}</span></td>
-                    <td>${acoes}</td>
-                </tr>`;
+                html += `<tr><td><b>${info.epi}</b></td><td>${info.data}</td><td>${info.ca}</td><td>${info.prox_troca}</td><td><span class="${cl}">${info.status}</span></td><td>${acoes}</td></tr>`;
             });
-
             document.getElementById('resultado-ficha').innerHTML = html + "</table>";
         }
 
         function abrirModalEdicao(id, epiNome, ca, qtd, duracao, motivo, dataIso) {
-            document.getElementById('edit-id').value = id;
-            document.getElementById('edit-nome-epi').innerText = epiNome;
-            document.getElementById('edit-ca').value = ca;
-            document.getElementById('edit-qtd').value = qtd;
-            document.getElementById('edit-duracao').value = duracao;
-            document.getElementById('edit-motivo').value = motivo;
-            document.getElementById('edit-data').value = dataIso; // NOVO: Preenche a data
-            
+            document.getElementById('edit-id').value = id; document.getElementById('edit-nome-epi').innerText = epiNome; document.getElementById('edit-ca').value = ca; document.getElementById('edit-qtd').value = qtd; document.getElementById('edit-duracao').value = duracao; document.getElementById('edit-motivo').value = motivo; document.getElementById('edit-data').value = dataIso;
             document.getElementById('modal-edicao').style.display = 'flex';
         }
 
-        function fecharModalEdicao() {
-            document.getElementById('modal-edicao').style.display = 'none';
-        }
+        function fecharModalEdicao() { document.getElementById('modal-edicao').style.display = 'none'; }
 
         async function salvarEdicaoItem() {
-            let id = document.getElementById('edit-id').value;
-            let ca = document.getElementById('edit-ca').value;
-            let qtd = document.getElementById('edit-qtd').value;
-            let duracao = document.getElementById('edit-duracao').value;
-            let motivo = document.getElementById('edit-motivo').value;
-            let dataHora = document.getElementById('edit-data').value; // NOVO: Coleta a data alterada
+            let id = document.getElementById('edit-id').value; let ca = document.getElementById('edit-ca').value; let qtd = document.getElementById('edit-qtd').value; let duracao = document.getElementById('edit-duracao').value; let motivo = document.getElementById('edit-motivo').value; let dataHora = document.getElementById('edit-data').value;
+            if(!qtd || qtd <= 0 || !ca || !duracao || duracao <= 0 || !dataHora) return alert("❌ Preencha todos os campos do EPI corretamente para salvar a edição!");
+            if(!confirm("⚠️ Tem certeza que deseja alterar este registro? O PDF da ficha do Colaborador será sobrescrito e atualizado no Drive.")) return;
 
-            if(!qtd || qtd <= 0 || !ca || !duracao || duracao <= 0 || !dataHora) {
-                return alert("❌ Preencha todos os campos do EPI corretamente para salvar a edição!");
-            }
+            let btn = document.getElementById('btn-salvar-edicao'); btn.innerText = "Salvando e Atualizando PDF... ⏳"; btn.disabled = true;
 
-            if(!confirm("⚠️ Tem certeza que deseja alterar este registro? O PDF da ficha do Colaborador será sobrescrito e atualizado no Drive.")) {
-                return;
-            }
-
-            let btn = document.getElementById('btn-salvar-edicao');
-            btn.innerText = "Salvando e Atualizando PDF... ⏳";
-            btn.disabled = true;
-
-            let p = {
-                acao: "editar_item",
-                id_item: id, ca: ca, qtd: qtd, duracao: duracao, motivo: motivo, data_hora: dataHora // Envia a data para o Google
-            };
+            let p = { acao: "editar_item", id_item: id, ca: ca, qtd: qtd, duracao: duracao, motivo: motivo, data_hora: dataHora };
 
             try {
                 let response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
                 let textResult = await response.text();
-                
-                let resJSON;
-                try {
-                    resJSON = JSON.parse(textResult);
-                } catch(jsonErr) {
-                    throw new Error("O Google não conseguiu processar. Verifique se o código V20 foi implantado corretamente.\n\nDetalhe técnico: " + textResult.substring(0, 100));
-                }
+                let resJSON = JSON.parse(textResult);
 
                 if(resJSON.sucesso) { 
                     alert("✅ Item Editado com sucesso! A ficha PDF foi atualizada no Drive."); 
-                    fecharModalEdicao();
-                    window.open(resJSON.pdf, '_blank'); 
-                    location.reload(); 
-                } else { 
-                    alert("❌ Erro ao editar:\n" + resJSON.erro); 
-                }
-            } catch(e) { 
-                alert("❌ Erro de comunicação com a planilha:\n\n" + e.message); 
-            }
-            
-            btn.innerText = "💾 Confirmar Edição";
-            btn.disabled = false;
+                    fecharModalEdicao(); window.open(resJSON.pdf, '_blank'); 
+                    await recarregarDadosSilenciosamente(); // NOVO: Atualiza sem deslogar
+                } else { alert("❌ Erro ao editar:\n" + resJSON.erro); }
+            } catch(e) { alert("❌ Erro de comunicação com a planilha:\n\n" + e.message); }
+            btn.innerText = "💾 Confirmar Edição"; btn.disabled = false;
         }
 
         async function salvarNovoColab() {
             let p = { acao: "cadastrar_colaborador", matricula: document.getElementById('cad-mat').value, nome: document.getElementById('cad-nome').value, funcao: document.getElementById('cad-func').value, setor: document.getElementById('cad-setor').value, admissao: document.getElementById('cad-adm').value };
             if(!p.nome || !p.setor) return alert("❌ Nome e Setor são obrigatórios!");
-            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("✅ Colaborador cadastrado no sistema!"); location.reload();
+            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("✅ Colaborador cadastrado!"); 
+            await recarregarDadosSilenciosamente(); // NOVO
         }
 
         async function salvarEntrada() {
             let p = { acao: "salvar_entrada_estoque", epi: document.getElementById('est-epi').value, qtd: document.getElementById('est-qtd').value, nf: document.getElementById('est-nf').value };
             if(!p.epi || !p.qtd) return alert("❌ Selecione o EPI e digite a Quantidade Comprada!");
-            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("✅ Estoque atualizado com sucesso!"); location.reload();
+            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); alert("✅ Estoque atualizado!"); 
+            await recarregarDadosSilenciosamente(); // NOVO
         }
 
         async function gerarRelatorioEstoque() {
-            let btn = document.getElementById('btn-pdf-estoque');
-            btn.innerText = "Gerando PDF... ⏳";
-            btn.disabled = true;
+            let btn = document.getElementById('btn-pdf-estoque'); btn.innerText = "Gerando PDF... ⏳"; btn.disabled = true;
             try {
                 let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({acao: "gerar_pdf_estoque"}) }); 
                 let d = await r.json();
-                if(d.sucesso) { 
-                    alert("✅ Relatório de Estoque gerado no Drive!"); 
-                    window.open(d.pdf, '_blank'); 
-                } else { 
-                    alert("❌ Erro ao gerar PDF: " + d.erro); 
-                }
-            } catch(e) { 
-                alert("❌ Erro de conexão: " + e.message); 
-            }
-            btn.innerText = "📄 Gerar PDF do Estoque";
-            btn.disabled = false;
+                if(d.sucesso) { alert("✅ Relatório gerado!"); window.open(d.pdf, '_blank'); } else { alert("❌ Erro: " + d.erro); }
+            } catch(e) { alert("❌ Erro: " + e.message); }
+            btn.innerText = "📄 Gerar PDF do Estoque"; btn.disabled = false;
         }
     </script>
 </body>
