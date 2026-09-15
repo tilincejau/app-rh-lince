@@ -563,6 +563,7 @@
             if (!funcAtual) return '<option value="">Selecione o Colaborador primeiro...</option>';
 
             let episSelecionados = [];
+            // Mapeia todos os EPIs que já estão selecionados em outras linhas
             document.querySelectorAll('.sel-epi').forEach(sel => {
                 if(sel !== selectAtual && sel.value) episSelecionados.push(String(sel.value).trim().toUpperCase());
             });
@@ -576,11 +577,19 @@
             bd.epis.sort().forEach(e => {
                 let eUpper = String(e).trim().toUpperCase();
                 let status = getEpiBadge(e);
-                let checkmark = episSelecionados.includes(eUpper) ? "JÁ NA LISTA | " : "";
+                
+                // Lógica do Destaque e Bloqueio
+                let isSelected = episSelecionados.includes(eUpper);
+                let checkmark = isSelected ? "✅ JÁ ADICIONADO ➔ " : "";
+                let disabledAttr = isSelected ? "disabled" : "";
+                
                 let textoFinal = `${checkmark}${e} [${status}]`;
 
-                if (nomesEpisDaFuncao.includes(eUpper)) { optFuncao += `<option value="${e}">${textoFinal}</option>`; } 
-                else { optOutros += `<option value="${e}">${textoFinal}</option>`; }
+                if (nomesEpisDaFuncao.includes(eUpper)) { 
+                    optFuncao += `<option value="${e}" ${disabledAttr}>${textoFinal}</option>`; 
+                } else { 
+                    optOutros += `<option value="${e}" ${disabledAttr}>${textoFinal}</option>`; 
+                }
             });
 
             optFuncao += '</optgroup>'; optOutros += '</optgroup>';
