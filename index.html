@@ -345,7 +345,6 @@
         function ocultarLoading() { document.getElementById('loading-overlay').style.display = 'none'; }
 
         async function recarregarDadosSilenciosamente() {
-            mostrarLoading("Atualizando Telas...");
             try {
                 let r2 = await fetch(`${API_URL}?acao=buscar_inicial`);
                 let d2 = await r2.json();
@@ -353,11 +352,9 @@
                     bd = d2;
                     popularListas();
                     if(document.getElementById('tela-consulta').style.display === 'block') { carregarFichaColab(); } 
-                    else if (document.getElementById('tela-entrega').style.display === 'block') { abrirTelaEntrega(); }
                     verificarVencidosGlobais();
                 }
-            } catch(e) { console.error("Erro na sincronização", e); }
-            ocultarLoading();
+            } catch(e) { console.error("Erro na sincronização em 2º plano", e); }
         }
 
         async function fazerLogin() {
@@ -372,10 +369,6 @@
                 let d = await r.json();
                 
                 if(d.sucesso){
-                    if(d.versao_backend !== "v26") {
-                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a versão mais recente. Vá no Script, edite e publique a 'Nova Versão'!");
-                        btn.innerText = "Acessar Sistema"; return;
-                    }
                     window.usuarioLogado = u; 
                     bd = d.bd; 
                     popularListas(); 
@@ -410,7 +403,7 @@
 
         function enviarWhatsappGestor() {
             let setorFiltro = document.getElementById('modal-setor-whatsapp').value;
-            let msg = "*RELATORIO DE EPIS VENCIDOS*\n\n";
+            let msg = "*RELATÓRIO DE EPIs VENCIDOS*\n\n";
             let agrupado = {};
             let encontrou = false;
             
@@ -426,12 +419,12 @@
             if(!encontrou) return alert("Nenhum EPI vencido para o setor selecionado.");
 
             Object.keys(agrupado).forEach(colab => {
-                msg += `Funcionario: *${colab}*\n`;
+                msg += `Funcionário: *${colab}*\n`;
                 agrupado[colab].forEach(epi => { msg += ` - ${epi.epi} (Venceu: ${epi.data})\n`; });
                 msg += `\n`;
             });
             
-            msg += "Acesse o sistema para realizar as trocas ou extensoes.";
+            msg += "Acesse o sistema para realizar as trocas ou extensões.";
             window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
         }
 
@@ -832,6 +825,7 @@
                 await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
                 await recarregarDadosSilenciosamente();
                 alert("✅ Status do colaborador atualizado com sucesso!");
+                ocultarLoading();
             } catch(e) { alert("❌ Erro de comunicação."); ocultarLoading(); }
         }
 
@@ -850,6 +844,7 @@
                 await recarregarDadosSilenciosamente();
                 alert("✅ Colaborador reativado com sucesso!");
                 document.getElementById('input-nova-admissao').value = '';
+                ocultarLoading();
             } catch(e) { alert("❌ Erro de comunicação."); ocultarLoading(); }
         }
 
@@ -901,6 +896,7 @@
             await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); 
             abrirTela('tela-menu');
             await recarregarDadosSilenciosamente();
+            ocultarLoading();
         }
 
         async function salvarEntrada() {
@@ -910,6 +906,7 @@
             await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); 
             abrirTela('tela-menu');
             await recarregarDadosSilenciosamente();
+            ocultarLoading();
         }
 
         async function gerarRelatorioEstoque() {
