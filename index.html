@@ -115,7 +115,7 @@
             <button class="btn-principal" onclick="abrirTela('tela-consulta')">🔍 Consulta Histórico</button>
             <button class="btn-principal" onclick="abrirTela('tela-cadastro-colab')">👤 Cadastrar Colaborador</button>
             <button class="btn-principal" onclick="abrirTela('tela-estoque')">📦 Estoque & Compras</button>
-            <button class="btn-secundario" style="margin-bottom:0; margin-top: 10px;" onclick="location.reload()">Sair do Sistema</button>
+            <button class="btn-secundario" style="margin-bottom:0; margin-top: 10px;" onclick="sairDoSistema()">Sair do Sistema (Trocar Usuário)</button>
         </div>
     </div>
 
@@ -350,13 +350,48 @@
                 let d2 = await r2.json();
                 if(d2.sucesso) {
                     bd = d2;
+                    // ATUALIZA A MEMÓRIA DO APARELHO COM OS DADOS MAIS RECENTES
+                    localStorage.setItem('lince_bd', JSON.stringify(bd));
+                    
                     popularListas();
                     if(document.getElementById('tela-consulta').style.display === 'block') { carregarFichaColab(); } 
                     verificarVencidosGlobais();
                 }
             } catch(e) { console.error("Erro na sincronização em 2º plano", e); }
         }
+        // FUNÇÃO QUE RODA SOZINHA ASSIM QUE O APP É ABERTO
+        window.onload = function() {
+            // 1. Tenta carregar o banco de dados salvo na memória instantaneamente
+            let bdSalvo = localStorage.getItem('lince_bd');
+            if(bdSalvo) {
+                try {
+                    bd = JSON.parse(bdSalvo);
+                    popularListas();
+                } catch(e) {}
+            }
 
+            // 2. Verifica se o usuário já fez login antes
+            let userSalvo = localStorage.getItem('lince_user');
+            if(userSalvo) {
+                let userObj = JSON.parse(userSalvo);
+                window.usuarioLogado = userObj.u;
+                
+                // Pula a tela de login e vai direto pro menu!
+                abrirTela('tela-menu');
+                initPad();
+                
+                if(bdSalvo) verificarVencidosGlobais();
+
+                // Busca dados novos na nuvem de forma invisível
+                recarregarDadosSilenciosamente();
+            }
+        };
+
+        // Função para sair do sistema de verdade (apagar o login salvo)
+        function sairDoSistema() {
+            localStorage.removeItem('lince_user');
+            location.reload();
+        }
         async function fazerLogin() {
             let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
             if(!u || !s) return alert("Preencha Usuário e Senha para continuar!");
@@ -371,6 +406,11 @@
                 if(d.sucesso){
                     window.usuarioLogado = u; 
                     bd = d.bd; 
+                    
+                    // SALVA NA MEMÓRIA DO APARELHO PARA ACESSO INSTANTÂNEO NA PRÓXIMA VEZ
+                    localStorage.setItem('lince_user', JSON.stringify({u: u, s: s}));
+                    localStorage.setItem('lince_bd', JSON.stringify(bd));
+                    
                     popularListas(); 
                     abrirTela('tela-menu'); 
                     initPad();
