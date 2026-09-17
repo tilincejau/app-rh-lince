@@ -189,6 +189,7 @@
                 </div>
             </div>
             
+            <button class="btn-pdf" id="btn-gerar-pdf-ficha" style="display:none; margin-bottom: 15px;" onclick="solicitarPdfColaborador()">📄 Gerar Ficha Completa (PDF)</button>
             <div id="resultado-ficha" style="overflow-x: auto;"></div>
         </div>
     </div>
@@ -205,7 +206,6 @@
             <label class="info-label">Nome Completo:</label>
             <input type="text" id="cad-nome" class="input-campo" placeholder="Nome sem abreviações">
             
-            <!-- Agora a Função é uma lista dinâmica com opção de Novo -->
             <label class="info-label">Função / Cargo:</label>
             <select id="cad-func-select" class="input-campo" onchange="if(this.value === 'NOVO') { document.getElementById('cad-func-novo').style.display = 'block'; } else { document.getElementById('cad-func-novo').style.display = 'none'; }"></select>
             <input type="text" id="cad-func-novo" class="input-campo" placeholder="Digite o nome da nova função..." style="display:none; margin-top: -5px;">
@@ -373,7 +373,7 @@
                 
                 if(d.sucesso){
                     if(d.versao_backend !== "v26") {
-                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a V26. Vá no Script, edite e clique em 'Nova Versão'!");
+                        alert("❌ ERRO: O Google Apps Script não foi atualizado para a versão mais recente. Vá no Script, edite e publique a 'Nova Versão'!");
                         btn.innerText = "Acessar Sistema"; return;
                     }
                     window.usuarioLogado = u; 
@@ -451,12 +451,10 @@
             filtrarColab('', 'ent-colab');
             filtrarColab('', 'cons-colab');
             
-            // Popula os Selects de EPIs
             let optEPI = '<option value="">Selecione o EPI...</option>';
             bd.epis.sort().forEach(e => optEPI += `<option value="${e}">${e}</option>`);
             document.getElementById('est-epi').innerHTML = optEPI;
 
-            // Extrai as funções únicas para o Cadastro de Colaboradores
             let funcoesSet = new Set();
             bd.colaboradores.forEach(c => { if(c.funcao) funcoesSet.add(c.funcao.toUpperCase()); });
             bd.validades.forEach(v => { if(v.funcao) funcoesSet.add(v.funcao.toUpperCase()); });
@@ -466,7 +464,6 @@
             optFuncoes += '<option value="NOVO">+ CADASTRAR NOVA FUNÇÃO</option>';
             document.getElementById('cad-func-select').innerHTML = optFuncoes;
 
-            // Popula a Tabela de Estoque (agora com o Lápis de Edição)
             let htmlEst = "<table><tr><th>EPI</th><th>ENTRADA</th><th>SAÍDA</th><th>SALDO FINAL</th><th>AÇÕES</th></tr>";
             bd.estoque.forEach(e => { 
                 htmlEst += `<tr>
@@ -537,7 +534,6 @@
             if(selectId === 'cons-colab') carregarFichaColab();
         }
 
-        // Semáforo Reativado!
         function getEpiBadge(epiName) {
             let epiKey = String(epiName).trim().toUpperCase();
             let proxTrocaStr = window.statusEpiAtual[epiKey];
@@ -563,7 +559,6 @@
             if (!funcAtual) return '<option value="">Selecione o Colaborador primeiro...</option>';
 
             let episSelecionados = [];
-            // Mapeia todos os EPIs que já estão selecionados em outras linhas
             document.querySelectorAll('.sel-epi').forEach(sel => {
                 if(sel !== selectAtual && sel.value) episSelecionados.push(String(sel.value).trim().toUpperCase());
             });
@@ -578,7 +573,6 @@
                 let eUpper = String(e).trim().toUpperCase();
                 let status = getEpiBadge(e);
                 
-                // Lógica do Destaque e Bloqueio
                 let isSelected = episSelecionados.includes(eUpper);
                 let checkmark = isSelected ? "✅ JÁ ADICIONADO ➔ " : "";
                 let disabledAttr = isSelected ? "disabled" : "";
@@ -757,11 +751,13 @@
 
         function carregarFichaColab() {
             let colabNome = String(document.getElementById('cons-colab').value).trim().toUpperCase().replace(/\s+/g, ' '); 
+            
             if(!colabNome) { 
                 document.getElementById('resultado-ficha').innerHTML = ""; 
                 document.getElementById('cracha-ativo').style.display = 'none';
                 document.getElementById('cracha-demitido').style.display = 'none';
                 document.getElementById('box-demissao').style.display = 'none';
+                document.getElementById('btn-gerar-pdf-ficha').style.display = 'none'; 
                 return; 
             }
 
@@ -769,6 +765,8 @@
             let funcao = colabObj ? colabObj.funcao : "";
 
             if(colabObj) {
+                document.getElementById('btn-gerar-pdf-ficha').style.display = 'block'; 
+                
                 if(colabObj.ativo) {
                     document.getElementById('cracha-ativo').style.display = 'block';
                     document.getElementById('cracha-demitido').style.display = 'none';
@@ -922,6 +920,44 @@
                 if(d.sucesso) { window.open(d.pdf, '_blank'); } else { alert("❌ Erro: " + d.erro); }
             } catch(e) { alert("❌ Erro: " + e.message); }
             btn.innerText = "📄 Gerar PDF do Estoque"; btn.disabled = false;
+        }
+
+        async function solicitarPdfColaborador() {
+            let colabNome = document.getElementById('cons-colab').value;
+            if(!colabNome) return;
+            
+            let colabObj = bd.colaboradores.find(c => c.nome.toUpperCase() === colabNome.toUpperCase());
+            if(!colabObj) return;
+
+            let btn = document.getElementById('btn-gerar-pdf-ficha');
+            btn.innerText = "Gerando Ficha Completa... ⏳"; 
+            btn.disabled = true;
+
+            let p = { 
+                acao: "gerar_pdf_colaborador", 
+                colab: colabObj.nome, 
+                matricula: colabObj.matricula, 
+                admissao: colabObj.admissao, 
+                funcao: colabObj.funcao, 
+                setor: colabObj.setor 
+            };
+
+            try {
+                let response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                let textResult = await response.text();
+                let resJSON = JSON.parse(textResult);
+
+                if(resJSON.sucesso) { 
+                    window.open(resJSON.pdf, '_blank'); 
+                } else { 
+                    alert("❌ Erro:\n" + resJSON.erro); 
+                }
+            } catch(e) { 
+                alert("❌ Erro de rede: " + e.message); 
+            }
+            
+            btn.innerText = "📄 Gerar Ficha Completa (PDF)"; 
+            btn.disabled = false;
         }
     </script>
 </body>
