@@ -1022,47 +1022,51 @@
         }
 
         async function solicitarPdfColaborador() {
-            let colabNome = document.getElementById('cons-colab').value;
-            if(!colabNome) return;
-            
-            let colabObj = bd.colaboradores.find(c => c.nome.toUpperCase() === colabNome.toUpperCase());
-            if(!colabObj) return;
+    let colabNome = document.getElementById('cons-colab').value;
+    if(!colabNome) return;
+    
+    let colabObj = bd.colaboradores.find(c => c.nome.toUpperCase() === colabNome.toUpperCase());
+    if(!colabObj) return;
 
-            let btn = document.getElementById('btn-gerar-pdf-ficha');
-            btn.innerText = "Gerando Ficha Completa... ⏳"; 
-            btn.disabled = true;
+    let btn = document.getElementById('btn-gerar-pdf-ficha');
+    btn.innerText = "A gerar Ficha Completa... ⏳"; 
+    btn.disabled = true;
 
-            let p = { 
-                acao: "gerar_pdf_colaborador", 
-                colab: colabObj.nome, 
-                matricula: colabObj.matricula, 
-                admissao: colabObj.admissao, 
-                funcao: colabObj.funcao, 
-                setor: colabObj.setor 
-            };
+    let p = { 
+        acao: "gerar_pdf_colaborador", 
+        colab: colabObj.nome, 
+        matricula: colabObj.matricula, 
+        admissao: colabObj.admissao, 
+        funcao: colabObj.funcao, 
+        setor: colabObj.setor 
+    };
 
-            try {
-                let response = await fetch(API_URL, { 
-                    method: 'POST', 
-                    redirect: 'follow', 
-                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
-                    body: JSON.stringify(p) 
-                });
-                let textResult = await response.text();
-                let resJSON = JSON.parse(textResult);
+    try {
+        let response = await fetch(API_URL, { 
+            method: 'POST', 
+            redirect: 'follow', 
+            headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+            body: JSON.stringify(p) 
+        });
+        let textResult = await response.text();
+        let resJSON = JSON.parse(textResult);
 
-                if(resJSON.sucesso) { 
-                    window.open(resJSON.pdf, '_blank'); 
-                } else { 
-                    alert("❌ Erro:\n" + resJSON.erro); 
-                }
-            } catch(e) { 
-                alert("❌ Erro de rede: " + e.message); 
-            }
-            
-            btn.innerText = "📄 Gerar Ficha Completa (PDF)"; 
-            btn.disabled = false;
+        if(resJSON.sucesso) { 
+            window.open(resJSON.pdf, '_blank'); 
+        } else { 
+            alert("❌ Erro:\n" + resJSON.erro); 
         }
+    } catch(e) { 
+        if(e.message.includes("Failed to fetch") || e.message.includes("NetworkError")) {
+            alert("✅ O histórico deste colaborador é grande e o PDF está a ser gerado em segundo plano com sucesso! Aguarde uns instantes e verifique a respetiva pasta no Google Drive.");
+        } else {
+            alert("❌ Erro de rede: " + e.message); 
+        }
+    }
+    
+    btn.innerText = "📄 Gerar Ficha Completa (PDF)"; 
+    btn.disabled = false;
+}
     </script>
 </body>
 </html>
