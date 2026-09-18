@@ -545,7 +545,12 @@
 
             let p = { acao: "ajustar_estoque", epi: epi, diff_entrada: diffEnt, diff_saida: diffSai };
             try {
-                let response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                let response = await fetch(API_URL, { 
+                    method: 'POST', 
+                    redirect: 'follow', 
+                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+                    body: JSON.stringify(p) 
+                });
                 document.getElementById('modal-estoque').style.display = 'none';
                 await recarregarDadosSilenciosamente();
             } catch(e) { alert("Erro de comunicação: " + e.message); }
@@ -739,9 +744,31 @@
         }
         function limparPad() { ctx.clearRect(0,0,300,150); document.getElementById('canvas-ass').removeAttribute('d'); }
 
+        // NOVA FUNÇÃO OTIMIZADA PARA COMPRIMIR FOTOS
         function processarFoto(input) {
-            if (!input.files[0]) return; let r = new FileReader();
-            r.onload = e => { b64Foto = e.target.result; }; r.readAsDataURL(input.files[0]);
+            if (!input.files[0]) return; 
+            let file = input.files[0];
+            let reader = new FileReader();
+            
+            reader.onload = function(e) {
+                let img = new Image();
+                img.onload = function() {
+                    let canvas = document.createElement('canvas');
+                    let MAX_WIDTH = 800; // Redimensiona a largura para 800px
+                    let scaleSize = MAX_WIDTH / img.width;
+                    
+                    canvas.width = MAX_WIDTH;
+                    canvas.height = img.height * scaleSize;
+                    
+                    let ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    
+                    // Converte para JPEG com 70% de qualidade
+                    b64Foto = canvas.toDataURL('image/jpeg', 0.7);
+                }
+                img.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
         }
 
         async function salvarEntrega() {
@@ -765,7 +792,12 @@
             let btn = document.getElementById('btn-salvar-entrega'); btn.innerText = "Enviando e Gerando PDF... ⏳"; btn.disabled = true;
 
             try {
-                let response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                let response = await fetch(API_URL, { 
+                    method: 'POST', 
+                    redirect: 'follow', 
+                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+                    body: JSON.stringify(p) 
+                });
                 let textResult = await response.text();
                 let resJSON = JSON.parse(textResult);
 
@@ -862,7 +894,12 @@
             mostrarLoading("Atualizando banco de dados...");
             let p = { acao: "salvar_demissao", nome: colabNome, data_demissao: dtDemissao };
             try {
-                await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                await fetch(API_URL, { 
+                    method: 'POST', 
+                    redirect: 'follow', 
+                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+                    body: JSON.stringify(p) 
+                });
                 await recarregarDadosSilenciosamente();
                 alert("✅ Status do colaborador atualizado com sucesso!");
                 ocultarLoading();
@@ -880,7 +917,12 @@
             let p = { acao: "recontratar_colaborador", nome: colabNome, nova_admissao: novaAdm };
             
             try {
-                await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                await fetch(API_URL, { 
+                    method: 'POST', 
+                    redirect: 'follow', 
+                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+                    body: JSON.stringify(p) 
+                });
                 await recarregarDadosSilenciosamente();
                 alert("✅ Colaborador reativado com sucesso!");
                 document.getElementById('input-nova-admissao').value = '';
@@ -905,7 +947,12 @@
             let p = { acao: "editar_item", id_item: id, ca: ca, qtd: qtd, duracao: duracao, motivo: motivo, data_hora: dataHora };
 
             try {
-                let response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                let response = await fetch(API_URL, { 
+                    method: 'POST', 
+                    redirect: 'follow', 
+                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+                    body: JSON.stringify(p) 
+                });
                 let textResult = await response.text();
                 let resJSON = JSON.parse(textResult);
 
@@ -933,7 +980,12 @@
             };
             if(!p.nome || !p.setor || !p.funcao) return alert("❌ Nome, Setor e Função são obrigatórios!");
             mostrarLoading("Cadastrando...");
-            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); 
+            await fetch(API_URL, { 
+                method: 'POST', 
+                redirect: 'follow', 
+                headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+                body: JSON.stringify(p) 
+            }); 
             abrirTela('tela-menu');
             await recarregarDadosSilenciosamente();
             ocultarLoading();
@@ -943,7 +995,12 @@
             let p = { acao: "salvar_entrada_estoque", epi: document.getElementById('est-epi').value, qtd: document.getElementById('est-qtd').value, nf: document.getElementById('est-nf').value };
             if(!p.epi || !p.qtd) return alert("❌ Selecione o EPI e digite a Quantidade Comprada!");
             mostrarLoading("Salvando Compra...");
-            await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) }); 
+            await fetch(API_URL, { 
+                method: 'POST', 
+                redirect: 'follow', 
+                headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+                body: JSON.stringify(p) 
+            }); 
             abrirTela('tela-menu');
             await recarregarDadosSilenciosamente();
             ocultarLoading();
@@ -952,7 +1009,12 @@
         async function gerarRelatorioEstoque() {
             let btn = document.getElementById('btn-pdf-estoque'); btn.innerText = "Gerando PDF... ⏳"; btn.disabled = true;
             try {
-                let r = await fetch(API_URL, { method: 'POST', body: JSON.stringify({acao: "gerar_pdf_estoque"}) }); 
+                let r = await fetch(API_URL, { 
+                    method: 'POST', 
+                    redirect: 'follow', 
+                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+                    body: JSON.stringify({acao: "gerar_pdf_estoque"}) 
+                }); 
                 let d = await r.json();
                 if(d.sucesso) { window.open(d.pdf, '_blank'); } else { alert("❌ Erro: " + d.erro); }
             } catch(e) { alert("❌ Erro: " + e.message); }
@@ -980,7 +1042,12 @@
             };
 
             try {
-                let response = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                let response = await fetch(API_URL, { 
+                    method: 'POST', 
+                    redirect: 'follow', 
+                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
+                    body: JSON.stringify(p) 
+                });
                 let textResult = await response.text();
                 let resJSON = JSON.parse(textResult);
 
