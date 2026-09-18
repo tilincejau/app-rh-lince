@@ -77,13 +77,34 @@
         .cracha-ativo { background: #e8f5e9; color: #2e7d32; padding: 8px; border-radius: 6px; text-align: center; margin-bottom: 15px; font-weight: bold; font-size: 12px; border: 1px solid #c8e6c9; display: none; }
 
         @media (max-width: 600px) {
-            .app-container { padding: 10px; }
-            .card { padding: 15px; }
-            .input-campo, select { font-size: 13px; padding: 10px; }
-            table { font-size: 11px; }
-            th, td { padding: 6px; }
-            .btn-acao-rapida { font-size: 10px; padding: 6px 8px; }
-            .status-valido, .status-vencido, .status-neutro { font-size: 10px; padding: 3px 5px;}
+            .app-container { padding: 8px; }
+            .logo { max-width: 160px; margin-bottom: 5px; } /* Logo menor no topo */
+            .card { padding: 12px; border-radius: 12px; }
+            
+            /* Títulos e Textos proporcionais */
+            h2 { font-size: 18px; margin-bottom: 10px; }
+            h3 { font-size: 16px; margin-bottom: 10px; }
+            h4 { font-size: 14px; margin-top: 15px; padding-bottom: 5px; }
+            .info-label { font-size: 10px; margin-top: 8px; margin-bottom: 4px; }
+            .desenvolvedor { font-size: 9px; margin-bottom: 15px; }
+            
+            /* Inputs e Selects mais compactos */
+            .input-campo, select { font-size: 12px; padding: 8px; border-radius: 8px; margin-bottom: 8px; }
+            
+            /* Botões ajustados para não ocuparem a tela toda */
+            .btn-principal, .btn-whatsapp { font-size: 13px; padding: 12px; border-radius: 8px; margin-bottom: 8px; }
+            .btn-secundario, .btn-sucesso, .btn-pdf { font-size: 12px; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+            .btn-acao-rapida, .btn-editar { font-size: 9px; padding: 5px 6px; }
+            
+            /* Tabela do histórico super compacta */
+            table { font-size: 10px; margin-top: 5px; }
+            th, td { padding: 5px 4px; }
+            th { font-size: 9px; }
+            .status-valido, .status-vencido, .status-neutro { font-size: 9px; padding: 3px 4px; }
+            
+            /* Ficha de entrega */
+            .linha-item { padding: 10px; border-radius: 8px; margin-bottom: 10px; }
+            .btn-remover { font-size: 9px; padding: 4px 8px; top: 6px; right: 6px; }
         }
     </style>
 </head>
