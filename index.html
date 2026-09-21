@@ -78,31 +78,21 @@
 
         @media (max-width: 600px) {
             .app-container { padding: 8px; }
-            .logo { max-width: 160px; margin-bottom: 5px; } /* Logo menor no topo */
+            .logo { max-width: 160px; margin-bottom: 5px; }
             .card { padding: 12px; border-radius: 12px; }
-            
-            /* Títulos e Textos proporcionais */
             h2 { font-size: 18px; margin-bottom: 10px; }
             h3 { font-size: 16px; margin-bottom: 10px; }
             h4 { font-size: 14px; margin-top: 15px; padding-bottom: 5px; }
             .info-label { font-size: 10px; margin-top: 8px; margin-bottom: 4px; }
             .desenvolvedor { font-size: 9px; margin-bottom: 15px; }
-            
-            /* Inputs e Selects mais compactos */
             .input-campo, select { font-size: 12px; padding: 8px; border-radius: 8px; margin-bottom: 8px; }
-            
-            /* Botões ajustados para não ocuparem a tela toda */
             .btn-principal, .btn-whatsapp { font-size: 13px; padding: 12px; border-radius: 8px; margin-bottom: 8px; }
             .btn-secundario, .btn-sucesso, .btn-pdf { font-size: 12px; padding: 10px; border-radius: 8px; margin-bottom: 10px; }
             .btn-acao-rapida, .btn-editar { font-size: 9px; padding: 5px 6px; }
-            
-            /* Tabela do histórico super compacta */
             table { font-size: 10px; margin-top: 5px; }
             th, td { padding: 5px 4px; }
             th { font-size: 9px; }
             .status-valido, .status-vencido, .status-neutro { font-size: 9px; padding: 3px 4px; }
-            
-            /* Ficha de entrega */
             .linha-item { padding: 10px; border-radius: 8px; margin-bottom: 10px; }
             .btn-remover { font-size: 9px; padding: 4px 8px; top: 6px; right: 6px; }
         }
@@ -136,7 +126,9 @@
             <button class="btn-principal" onclick="abrirTela('tela-consulta')">🔍 Consulta Histórico</button>
             <button class="btn-principal" onclick="abrirTela('tela-cadastro-colab')">👤 Cadastrar Colaborador</button>
             <button class="btn-principal" onclick="abrirTela('tela-estoque')">📦 Estoque & Compras</button>
-            <button class="btn-secundario" style="margin-bottom:0; margin-top: 10px;" onclick="sairDoSistema()">Sair do Sistema (Trocar Usuário)</button>
+            
+            <button class="btn-secundario" style="margin-top: 15px; margin-bottom: 10px; border: 1.5px dashed var(--cor-primaria); color: var(--cor-primaria); background: transparent;" onclick="forcarSincronizacaoManual()" id="btn-sync-manual">🔄 Sincronizar Dados</button>
+            <button class="btn-secundario" style="margin-bottom:0;" onclick="sairDoSistema()">Sair do Sistema (Trocar Usuário)</button>
         </div>
     </div>
 
@@ -359,6 +351,103 @@
         window.statusEpiAtual = {}; 
         window.listaGlobaisVencidos = [];
 
+        // =======================================================
+        // LÓGICA DA FILA E BOTÃO MANUAL (OFFLINE-FIRST)
+        // =======================================================
+        let isSyncing = false;
+
+        function mostrarToast(msg, cor = "#1f2937") {
+            let toast = document.getElementById("toast-rh");
+            if (!toast) {
+                toast = document.createElement("div");
+                toast.id = "toast-rh";
+                document.body.appendChild(toast);
+            }
+            toast.style.cssText = `visibility: visible; min-width: 250px; background-color: ${cor}; color: #fff; text-align: center; border-radius: 30px; padding: 14px; position: fixed; z-index: 10000; left: 50%; bottom: 80px; transform: translateX(-50%); font-size: 14px; font-weight: 600; box-shadow: 0px 8px 20px rgba(0,0,0,0.3); transition: opacity 0.3s, bottom 0.3s; opacity: 1;`;
+            toast.innerText = msg;
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.style.visibility='hidden', 300); }, 3000);
+        }
+
+        function adicionarNaFila(payload) {
+            let fila = JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || [];
+            payload._localId = Date.now() + Math.random().toString(36).substr(2, 5);
+            fila.push(payload);
+            localStorage.setItem('rh_fila_requisicoes', JSON.stringify(fila));
+            sincronizarSegundoPlano(false); 
+        }
+
+        async function sincronizarSegundoPlano(manual = false) {
+            if (!navigator.onLine) {
+                if(manual) mostrarToast("❌ Sem conexão à internet", "#dc2626");
+                return;
+            }
+            if (isSyncing) {
+                if(manual) mostrarToast("⏳ Sincronização já em andamento...", "#d97706");
+                return;
+            }
+
+            let fila = JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || [];
+            if (fila.length === 0) {
+                if (manual) {
+                    mostrarToast("✅ Tudo já está atualizado!", "#059669");
+                    recarregarDadosSilenciosamente();
+                }
+                return;
+            }
+
+            isSyncing = true;
+            let filaRestante = [...fila];
+            let processouAlgo = false;
+
+            mostrarToast(`🔄 Sincronizando ${fila.length} pendências...`, "#d97706");
+
+            for (let i = 0; i < fila.length; i++) {
+                let reqPayload = fila[i];
+                try {
+                    let p = {...reqPayload}; delete p._localId;
+                    let resp = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p) });
+                    await resp.json();
+                    
+                    filaRestante = filaRestante.filter(item => item._localId !== reqPayload._localId);
+                    processouAlgo = true;
+                } catch (e) {
+                    console.warn("Sem internet para o pedido, parando fila.");
+                    break; 
+                }
+            }
+
+            localStorage.setItem('rh_fila_requisicoes', JSON.stringify(filaRestante));
+            
+            if (processouAlgo) {
+                if (filaRestante.length === 0) {
+                    mostrarToast("✅ Tudo sincronizado com sucesso!", "#059669");
+                } else {
+                    mostrarToast(`⚠️ Sobraram ${filaRestante.length} itens (Sem rede)`, "#dc2626");
+                }
+                recarregarDadosSilenciosamente();
+            }
+            isSyncing = false;
+        }
+
+        async function forcarSincronizacaoManual() {
+            let btn = document.getElementById('btn-sync-manual');
+            if(!btn) return;
+            let originalText = btn.innerText;
+            btn.innerText = "Sincronizando... ⏳";
+            btn.disabled = true;
+
+            await sincronizarSegundoPlano(true);
+
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+
+        setInterval(() => sincronizarSegundoPlano(false), 300000); // Tenta a cada 5 Minutos
+        document.addEventListener("visibilitychange", function() {
+            if (document.visibilityState === 'visible') sincronizarSegundoPlano(false);
+        });
+        // =======================================================
+
         function mostrarLoading(msg) {
             document.getElementById('loading-msg').innerText = msg;
             document.getElementById('loading-overlay').style.display = 'flex';
@@ -367,22 +456,23 @@
 
         async function recarregarDadosSilenciosamente() {
             try {
+                let fila = JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || [];
+                if(fila.length > 0) return; // Não baixa dados velhos se temos coisas na fila local
+
                 let r2 = await fetch(`${API_URL}?acao=buscar_inicial`);
                 let d2 = await r2.json();
                 if(d2.sucesso) {
                     bd = d2;
-                    // ATUALIZA A MEMÓRIA DO APARELHO COM OS DADOS MAIS RECENTES
                     localStorage.setItem('lince_bd', JSON.stringify(bd));
                     
                     popularListas();
                     if(document.getElementById('tela-consulta').style.display === 'block') { carregarFichaColab(); } 
                     verificarVencidosGlobais();
                 }
-            } catch(e) { console.error("Erro na sincronização em 2º plano", e); }
+            } catch(e) {}
         }
-        // FUNÇÃO QUE RODA SOZINHA ASSIM QUE O APP É ABERTO
+
         window.onload = function() {
-            // 1. Tenta carregar o banco de dados salvo na memória instantaneamente
             let bdSalvo = localStorage.getItem('lince_bd');
             if(bdSalvo) {
                 try {
@@ -391,28 +481,24 @@
                 } catch(e) {}
             }
 
-            // 2. Verifica se o usuário já fez login antes
             let userSalvo = localStorage.getItem('lince_user');
             if(userSalvo) {
                 let userObj = JSON.parse(userSalvo);
                 window.usuarioLogado = userObj.u;
                 
-                // Pula a tela de login e vai direto pro menu!
                 abrirTela('tela-menu');
                 initPad();
                 
                 if(bdSalvo) verificarVencidosGlobais();
-
-                // Busca dados novos na nuvem de forma invisível
                 recarregarDadosSilenciosamente();
             }
         };
 
-        // Função para sair do sistema de verdade (apagar o login salvo)
         function sairDoSistema() {
             localStorage.removeItem('lince_user');
             location.reload();
         }
+
         async function fazerLogin() {
             let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
             if(!u || !s) return alert("Preencha Usuário e Senha para continuar!");
@@ -428,7 +514,6 @@
                     window.usuarioLogado = u; 
                     bd = d.bd; 
                     
-                    // SALVA NA MEMÓRIA DO APARELHO PARA ACESSO INSTANTÂNEO NA PRÓXIMA VEZ
                     localStorage.setItem('lince_user', JSON.stringify({u: u, s: s}));
                     localStorage.setItem('lince_bd', JSON.stringify(bd));
                     
@@ -565,17 +650,21 @@
             btn.innerText = "Salvando Ajuste... ⏳"; btn.disabled = true;
 
             let p = { acao: "ajustar_estoque", epi: epi, diff_entrada: diffEnt, diff_saida: diffSai };
-            try {
-                let response = await fetch(API_URL, { 
-                    method: 'POST', 
-                    redirect: 'follow', 
-                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
-                    body: JSON.stringify(p) 
-                });
-                document.getElementById('modal-estoque').style.display = 'none';
-                await recarregarDadosSilenciosamente();
-            } catch(e) { alert("Erro de comunicação: " + e.message); }
+            adicionarNaFila(p);
+
+            // Atualização otimista
+            let item = bd.estoque.find(x => x.epi === epi);
+            if(item) {
+                item.entradas = entNova;
+                item.saidas = saiNova;
+                item.saldo = entNova - saiNova;
+                localStorage.setItem('lince_bd', JSON.stringify(bd));
+                popularListas();
+            }
+
+            document.getElementById('modal-estoque').style.display = 'none';
             btn.innerText = "💾 Salvar Ajuste"; btn.disabled = false;
+            mostrarToast("💾 Ajuste salvo localmente!");
         }
 
         function filtrarColab(texto, selectId) {
@@ -765,7 +854,6 @@
         }
         function limparPad() { ctx.clearRect(0,0,300,150); document.getElementById('canvas-ass').removeAttribute('d'); }
 
-        // NOVA FUNÇÃO OTIMIZADA PARA COMPRIMIR FOTOS
         function processarFoto(input) {
             if (!input.files[0]) return; 
             let file = input.files[0];
@@ -775,7 +863,7 @@
                 let img = new Image();
                 img.onload = function() {
                     let canvas = document.createElement('canvas');
-                    let MAX_WIDTH = 800; // Redimensiona a largura para 800px
+                    let MAX_WIDTH = 800;
                     let scaleSize = MAX_WIDTH / img.width;
                     
                     canvas.width = MAX_WIDTH;
@@ -784,7 +872,6 @@
                     let ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                     
-                    // Converte para JPEG com 70% de qualidade
                     b64Foto = canvas.toDataURL('image/jpeg', 0.7);
                 }
                 img.src = e.target.result;
@@ -831,24 +918,13 @@
             };
         
             let btn = document.getElementById('btn-salvar-entrega'); 
-            btn.innerText = "Enviando... ⏳"; 
+            btn.innerText = "Preparando... ⏳"; 
             btn.disabled = true;
+
+            adicionarNaFila(p);
         
-            // Disparo em segundo plano no formato padrão (evita o bloqueio CORS imediato)
-            fetch(API_URL, { 
-                method: 'POST', 
-                body: JSON.stringify(p) 
-            }).then(response => {
-                // Atualiza a memória invisivelmente quando o Google terminar o serviço
-                recarregarDadosSilenciosamente();
-            }).catch(e => {
-                console.error("Processo em segundo plano finalizado:", e);
-            });
+            alert("✅ Entrega registrada no celular!\n\nSerá enviada e o PDF gerado em 2º plano automaticamente.");
         
-            // Libera a tela imediatamente para o usuário
-            alert("✅ Entrega registrada com sucesso!\n\nO PDF está sendo gerado na nuvem. Você já pode continuar a trabalhar.");
-        
-            // Reseta a tela e volta ao menu
             abrirTelaEntrega();
             abrirTela('tela-menu');
             
@@ -934,19 +1010,22 @@
             let dtDemissao = document.getElementById('input-demissao').value;
             if(!confirm(`Tem certeza que deseja atualizar a data de desligamento de ${colabNome}?`)) return;
             
-            mostrarLoading("Atualizando banco de dados...");
             let p = { acao: "salvar_demissao", nome: colabNome, data_demissao: dtDemissao };
-            try {
-                await fetch(API_URL, { 
-                    method: 'POST', 
-                    redirect: 'follow', 
-                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
-                    body: JSON.stringify(p) 
-                });
-                await recarregarDadosSilenciosamente();
-                alert("✅ Status do colaborador atualizado com sucesso!");
-                ocultarLoading();
-            } catch(e) { alert("❌ Erro de comunicação."); ocultarLoading(); }
+            adicionarNaFila(p);
+
+            // Atualização Otimista
+            let c = bd.colaboradores.find(x => x.nome === colabNome);
+            if(c) {
+                c.ativo = false;
+                c.isoDemissao = dtDemissao;
+                c.demissao = dtDemissao.split('-').reverse().join('/');
+                localStorage.setItem('lince_bd', JSON.stringify(bd));
+                carregarFichaColab();
+            }
+
+            alert("✅ Status atualizado localmente!");
+            document.getElementById('input-demissao').value = "";
+            mostrarToast("💾 Demissão salva localmente!");
         }
 
         async function recontratarColaborador() {
@@ -954,23 +1033,24 @@
             let novaAdm = document.getElementById('input-nova-admissao').value;
             
             if(!novaAdm) return alert("❌ Insira a data da nova admissão para recontratar!");
-            if(!confirm(`Deseja realmente reativar o colaborador ${colabNome} com a nova data de admissão?\n\nA data de demissão antiga será apagada, mas todo o histórico de EPIs anteriores continuará salvo na ficha PDF gerada daqui pra frente.`)) return;
+            if(!confirm(`Deseja realmente reativar o colaborador ${colabNome} com a nova data de admissão?\n\nA data de demissão antiga será apagada.`)) return;
             
-            mostrarLoading("Reativando colaborador...");
             let p = { acao: "recontratar_colaborador", nome: colabNome, nova_admissao: novaAdm };
+            adicionarNaFila(p);
             
-            try {
-                await fetch(API_URL, { 
-                    method: 'POST', 
-                    redirect: 'follow', 
-                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
-                    body: JSON.stringify(p) 
-                });
-                await recarregarDadosSilenciosamente();
-                alert("✅ Colaborador reativado com sucesso!");
-                document.getElementById('input-nova-admissao').value = '';
-                ocultarLoading();
-            } catch(e) { alert("❌ Erro de comunicação."); ocultarLoading(); }
+            // Atualização otimista
+            let c = bd.colaboradores.find(x => x.nome === colabNome);
+            if(c) {
+                c.ativo = true;
+                c.admissao = novaAdm.split('-').reverse().join('/');
+                c.demissao = "";
+                localStorage.setItem('lince_bd', JSON.stringify(bd));
+                carregarFichaColab();
+            }
+
+            alert("✅ Colaborador reativado localmente!");
+            document.getElementById('input-nova-admissao').value = '';
+            mostrarToast("💾 Recontratação salva localmente!");
         }
 
         function abrirModalEdicao(id, epiNome, ca, qtd, duracao, motivo, dataIso) {
@@ -985,28 +1065,17 @@
             if(!qtd || qtd <= 0 || !ca || !duracao || duracao <= 0 || !dataHora) return alert("❌ Preencha todos os campos do EPI corretamente para salvar a edição!");
             if(!confirm("⚠️ Tem certeza que deseja alterar este registro? O PDF da ficha do Colaborador será sobrescrito e atualizado no Drive.")) return;
 
-            let btn = document.getElementById('btn-salvar-edicao'); btn.innerText = "Salvando e Atualizando PDF... ⏳"; btn.disabled = true;
+            let btn = document.getElementById('btn-salvar-edicao'); 
+            btn.innerText = "Preparando... ⏳"; btn.disabled = true;
 
             let p = { acao: "editar_item", id_item: id, ca: ca, qtd: qtd, duracao: duracao, motivo: motivo, data_hora: dataHora };
+            adicionarNaFila(p);
 
-            try {
-                let response = await fetch(API_URL, { 
-                    method: 'POST', 
-                    redirect: 'follow', 
-                    headers: { "Content-Type": "text/plain;charset=utf-8" }, 
-                    body: JSON.stringify(p) 
-                });
-                let textResult = await response.text();
-                let resJSON = JSON.parse(textResult);
-
-                if(resJSON.sucesso) { 
-                    fecharModalEdicao(); 
-                    window.open(resJSON.pdf, '_blank'); 
-                    abrirTela('tela-menu');
-                    await recarregarDadosSilenciosamente(); 
-                } else { alert("❌ Erro ao editar:\n" + resJSON.erro); }
-            } catch(e) { alert("❌ Erro de comunicação com a planilha:\n\n" + e.message); }
+            fecharModalEdicao(); 
+            abrirTela('tela-menu');
+            
             btn.innerText = "💾 Confirmar Edição"; btn.disabled = false;
+            mostrarToast("💾 Edição salva localmente!");
         }
 
         async function salvarNovoColab() {
@@ -1016,40 +1085,58 @@
             let p = { 
                 acao: "cadastrar_colaborador", 
                 matricula: document.getElementById('cad-mat').value, 
-                nome: document.getElementById('cad-nome').value, 
+                nome: document.getElementById('cad-nome').value.toUpperCase(), 
                 funcao: funcaoFinal, 
                 setor: document.getElementById('cad-setor').value, 
                 admissao: document.getElementById('cad-adm').value 
             };
             if(!p.nome || !p.setor || !p.funcao) return alert("❌ Nome, Setor e Função são obrigatórios!");
-            mostrarLoading("Cadastrando...");
-            await fetch(API_URL, { 
-                method: 'POST', 
-                redirect: 'follow', 
-                headers: { "Content-Type": "text/plain;charset=utf-8" }, 
-                body: JSON.stringify(p) 
-            }); 
+            
+            adicionarNaFila(p);
+
+            // Atualização otimista
+            bd.colaboradores.push({
+                nome: p.nome,
+                matricula: p.matricula,
+                funcao: p.funcao,
+                setor: p.setor,
+                admissao: p.admissao.split('-').reverse().join('/'),
+                ativo: true
+            });
+            localStorage.setItem('lince_bd', JSON.stringify(bd));
+            
+            document.getElementById('cad-mat').value = "";
+            document.getElementById('cad-nome').value = "";
+            document.getElementById('cad-adm').value = "";
+            
             abrirTela('tela-menu');
-            await recarregarDadosSilenciosamente();
-            ocultarLoading();
+            mostrarToast("💾 Colaborador salvo na fila!");
         }
 
         async function salvarEntrada() {
             let p = { acao: "salvar_entrada_estoque", epi: document.getElementById('est-epi').value, qtd: document.getElementById('est-qtd').value, nf: document.getElementById('est-nf').value };
             if(!p.epi || !p.qtd) return alert("❌ Selecione o EPI e digite a Quantidade Comprada!");
-            mostrarLoading("Salvando Compra...");
-            await fetch(API_URL, { 
-                method: 'POST', 
-                redirect: 'follow', 
-                headers: { "Content-Type": "text/plain;charset=utf-8" }, 
-                body: JSON.stringify(p) 
-            }); 
+            
+            adicionarNaFila(p);
+
+            // Atualização otimista
+            let item = bd.estoque.find(x => x.epi === p.epi);
+            if(item) {
+                item.entradas = parseInt(item.entradas) + parseInt(p.qtd);
+                item.saldo = parseInt(item.saldo) + parseInt(p.qtd);
+                localStorage.setItem('lince_bd', JSON.stringify(bd));
+            }
+
+            document.getElementById('est-epi').value = '';
+            document.getElementById('est-qtd').value = '';
+            document.getElementById('est-nf').value = '';
+
             abrirTela('tela-menu');
-            await recarregarDadosSilenciosamente();
-            ocultarLoading();
+            mostrarToast("💾 Compra salva localmente!");
         }
 
         async function gerarRelatorioEstoque() {
+            if (!navigator.onLine) return alert("❌ Você precisa estar conectado à internet para gerar o PDF do Estoque!");
             let btn = document.getElementById('btn-pdf-estoque'); btn.innerText = "Gerando PDF... ⏳"; btn.disabled = true;
             try {
                 let r = await fetch(API_URL, { 
@@ -1065,6 +1152,8 @@
         }
 
         async function solicitarPdfColaborador() {
+            if (!navigator.onLine) return alert("❌ Você precisa estar conectado à internet para gerar o PDF da Ficha Completa!");
+            
             let colabNome = document.getElementById('cons-colab').value;
             if(!colabNome) return;
             
@@ -1095,7 +1184,6 @@
                 let textResult = await response.text();
                 let resJSON;
                 
-                // Tenta ler a resposta. Se o Google retornar o HTML de erro por demora, ele cai no catch
                 try {
                     resJSON = JSON.parse(textResult);
                 } catch (parseError) {
