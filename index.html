@@ -686,8 +686,8 @@
             let epiKey = String(epiName).trim().toUpperCase();
             let proxTrocaStr = window.statusEpiAtual[epiKey];
 
-            if (!proxTrocaStr) return "⚪ NUNCA ENTREGUE";
-            if (proxTrocaStr === "---" || proxTrocaStr === "N/A") return "🟢 Válido (S/ Validade)";
+            if (!proxTrocaStr) return "⚪ NOVO"; // Antes: "⚪ NUNCA ENTREGUE"
+            if (proxTrocaStr === "---" || proxTrocaStr === "N/A") return "🟢 S/ VAL."; // Antes: "🟢 Válido (S/ Validade)"
 
             let p = proxTrocaStr.split('/');
             if(p.length === 3) {
@@ -695,11 +695,11 @@
                 let hj = new Date(); hj.setHours(0,0,0,0);
                 let diffDias = Math.ceil((dTroca - hj.getTime()) / (1000 * 3600 * 24));
 
-                if (diffDias < 0) return `🔴 Vencido (${Math.abs(diffDias)} dias)`;
-                if (diffDias <= 15) return `🟡 Vence em ${diffDias} dias`;
-                return `🟢 Válido (${diffDias} dias restantes)`;
+                if (diffDias < 0) return `🔴 VENCIDO (${Math.abs(diffDias)}d)`; // Antes: "🔴 Vencido (X dias)"
+                if (diffDias <= 15) return `🟡 VENCE EM ${diffDias}d`; // Antes: "🟡 Vence em X dias"
+                return `🟢 VÁLIDO (${diffDias}d)`; // Antes: "🟢 Válido (X dias restantes)"
             }
-            return "⚪ Status Desconhecido";
+            return "⚪ DESC.";
         }
 
         function gerarOpcoesEpiAgrupadas(selectAtual) {
@@ -722,7 +722,8 @@
                 let status = getEpiBadge(e);
                 
                 let isSelected = episSelecionados.includes(eUpper);
-                let checkmark = isSelected ? "✅ JÁ ADICIONADO ➔ " : "";
+                // Encurtando a mensagem de item já adicionado
+                let checkmark = isSelected ? "✅ " : ""; 
                 let disabledAttr = isSelected ? "disabled" : "";
                 
                 let textoFinal = `${checkmark}${e} [${status}]`;
