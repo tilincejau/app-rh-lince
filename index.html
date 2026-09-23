@@ -671,14 +671,27 @@
             mostrarToast("💾 Ajuste salvo localmente!");
         }
 
+        // 1. ADICIONE ESTA NOVA FUNÇÃO AUXILIAR:
+        function limitarTexto(texto, tamanhoMax) {
+            if (texto.length <= tamanhoMax) return texto;
+            return texto.substring(0, tamanhoMax - 3) + "...";
+        }
+
+        // 2. SUBSTITUA A SUA FUNÇÃO filtrarColab:
         function filtrarColab(texto, selectId) {
             let select = document.getElementById(selectId);
             let options = '<option value="">Selecione o Colaborador...</option>';
             bd.colaboradores.sort((a,b) => a.nome.localeCompare(b.nome)).forEach(c => {
                 if(selectId === 'ent-colab' && !c.ativo) return; 
                 if(c.nome.toLowerCase().includes(texto.toLowerCase())) { 
-                    let tag = c.ativo ? '' : ' [DESLIGADO]';
-                    options += `<option value="${c.nome}">${c.nome} - ${c.funcao}${tag}</option>`; 
+                    let tag = c.ativo ? '' : ' [OFF]';
+                    let textoCompleto = `${c.nome} - ${c.funcao}${tag}`;
+                    
+                    // Limita o tamanho visual para caber em uma linha no celular (aprox. 36 caracteres)
+                    let textoCurto = limitarTexto(textoCompleto, 36); 
+                    
+                    // O value permanece "${c.nome}" inteiro para o banco de dados
+                    options += `<option value="${c.nome}">${textoCurto}</option>`; 
                 }
             });
             select.innerHTML = options;
@@ -686,26 +699,7 @@
             if(selectId === 'cons-colab') carregarFichaColab();
         }
 
-        function getEpiBadge(epiName) {
-            let epiKey = String(epiName).trim().toUpperCase();
-            let proxTrocaStr = window.statusEpiAtual[epiKey];
-
-            if (!proxTrocaStr) return "⚪ NOVO"; // Antes: "⚪ NUNCA ENTREGUE"
-            if (proxTrocaStr === "---" || proxTrocaStr === "N/A") return "🟢 S/ VAL."; // Antes: "🟢 Válido (S/ Validade)"
-
-            let p = proxTrocaStr.split('/');
-            if(p.length === 3) {
-                let dTroca = new Date(p[2], p[1]-1, p[0]).getTime();
-                let hj = new Date(); hj.setHours(0,0,0,0);
-                let diffDias = Math.ceil((dTroca - hj.getTime()) / (1000 * 3600 * 24));
-
-                if (diffDias < 0) return `🔴 VENCIDO (${Math.abs(diffDias)}d)`; // Antes: "🔴 Vencido (X dias)"
-                if (diffDias <= 15) return `🟡 VENCE EM ${diffDias}d`; // Antes: "🟡 Vence em X dias"
-                return `🟢 VÁLIDO (${diffDias}d)`; // Antes: "🟢 Válido (X dias restantes)"
-            }
-            return "⚪ DESC.";
-        }
-
+        // 3. SUBSTITUA A SUA FUNÇÃO gerarOpcoesEpiAgrupadas:
         function gerarOpcoesEpiAgrupadas(selectAtual) {
             let funcAtual = document.getElementById('ent-funcao').value;
             if (!funcAtual) return '<option value="">Selecione o Colaborador primeiro...</option>';
@@ -726,22 +720,26 @@
                 let status = getEpiBadge(e);
                 
                 let isSelected = episSelecionados.includes(eUpper);
-                // Encurtando a mensagem de item já adicionado
                 let checkmark = isSelected ? "✅ " : ""; 
                 let disabledAttr = isSelected ? "disabled" : "";
                 
                 let textoFinal = `${checkmark}${e} [${status}]`;
+                
+                // Limita o tamanho do EPI visualmente para não quebrar a linha
+                let textoCurto = limitarTexto(textoFinal, 36);
 
                 if (nomesEpisDaFuncao.includes(eUpper)) { 
-                    optFuncao += `<option value="${e}" ${disabledAttr}>${textoFinal}</option>`; 
+                    optFuncao += `<option value="${e}" ${disabledAttr}>${textoCurto}</option>`; 
                 } else { 
-                    optOutros += `<option value="${e}" ${disabledAttr}>${textoFinal}</option>`; 
+                    optOutros += `<option value="${e}" ${disabledAttr}>${textoCurto}</option>`; 
                 }
             });
 
             optFuncao += '</optgroup>'; optOutros += '</optgroup>';
             return '<option value="">Selecione o EPI entregue...</option>' + optFuncao + optOutros;
         }
+
+        
 
         function atualizarTodosDropdownsEpi() {
             document.querySelectorAll('.sel-epi').forEach(sel => {
