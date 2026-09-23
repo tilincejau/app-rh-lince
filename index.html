@@ -672,12 +672,13 @@
         }
 
         // 1. ADICIONE ESTA NOVA FUNÇÃO AUXILIAR:
+        // 1. FUNÇÃO AUXILIAR PARA ENCURTAR TEXTOS (NOVA)
         function limitarTexto(texto, tamanhoMax) {
             if (texto.length <= tamanhoMax) return texto;
             return texto.substring(0, tamanhoMax - 3) + "...";
         }
 
-        // 2. SUBSTITUA A SUA FUNÇÃO filtrarColab:
+        // 2. FUNÇÃO QUE FILTRA OS COLABORADORES
         function filtrarColab(texto, selectId) {
             let select = document.getElementById(selectId);
             let options = '<option value="">Selecione o Colaborador...</option>';
@@ -687,10 +688,9 @@
                     let tag = c.ativo ? '' : ' [OFF]';
                     let textoCompleto = `${c.nome} - ${c.funcao}${tag}`;
                     
-                    // Limita o tamanho visual para caber em uma linha no celular (aprox. 36 caracteres)
+                    // Limita o tamanho visual para caber em uma linha no celular
                     let textoCurto = limitarTexto(textoCompleto, 36); 
                     
-                    // O value permanece "${c.nome}" inteiro para o banco de dados
                     options += `<option value="${c.nome}">${textoCurto}</option>`; 
                 }
             });
@@ -699,7 +699,28 @@
             if(selectId === 'cons-colab') carregarFichaColab();
         }
 
-        // 3. SUBSTITUA A SUA FUNÇÃO gerarOpcoesEpiAgrupadas:
+        // 3. FUNÇÃO QUE GERA OS STATUS CURTOS (A QUE HAVIA SUMIDO)
+        function getEpiBadge(epiName) {
+            let epiKey = String(epiName).trim().toUpperCase();
+            let proxTrocaStr = window.statusEpiAtual[epiKey];
+
+            if (!proxTrocaStr) return "⚪ NOVO"; 
+            if (proxTrocaStr === "---" || proxTrocaStr === "N/A") return "🟢 S/ VAL."; 
+
+            let p = proxTrocaStr.split('/');
+            if(p.length === 3) {
+                let dTroca = new Date(p[2], p[1]-1, p[0]).getTime();
+                let hj = new Date(); hj.setHours(0,0,0,0);
+                let diffDias = Math.ceil((dTroca - hj.getTime()) / (1000 * 3600 * 24));
+
+                if (diffDias < 0) return `🔴 VENCIDO (${Math.abs(diffDias)}d)`; 
+                if (diffDias <= 15) return `🟡 VENCE EM ${diffDias}d`; 
+                return `🟢 VÁLIDO (${diffDias}d)`; 
+            }
+            return "⚪ DESC.";
+        }
+
+        // 4. FUNÇÃO QUE AGRUPA AS OPÇÕES COM LIMITE DE TEXTO
         function gerarOpcoesEpiAgrupadas(selectAtual) {
             let funcAtual = document.getElementById('ent-funcao').value;
             if (!funcAtual) return '<option value="">Selecione o Colaborador primeiro...</option>';
@@ -738,9 +759,7 @@
             optFuncao += '</optgroup>'; optOutros += '</optgroup>';
             return '<option value="">Selecione o EPI entregue...</option>' + optFuncao + optOutros;
         }
-
         
-
         function atualizarTodosDropdownsEpi() {
             document.querySelectorAll('.sel-epi').forEach(sel => {
                 let valorAtual = sel.value; 
