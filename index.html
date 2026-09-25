@@ -1,906 +1,1368 @@
-/* =========================================================
-   SISTEMA RH LINCE - JAVASCRIPT FRONT-END (BLINDADO)
-   ========================================================= */
-
-// COLOQUE O SEU NOVO LINK AQUI APÓS ATUALIZAR O CÓDIGO.GS
-const API_URL = "https://script.google.com/macros/s/AKfycbzO0b-B8n4grYA7GmyiL9AwFinaJTVll9TldFvDOFBhRS9xFAJu9TG-lC6lwN20X7pBQQ/exec";
-
-let bd = {}; let itemCount = 0; let b64Foto = ""; let isDrawing = false; let ctx;
-window.statusEpiAtual = {}; 
-window.listaGlobaisVencidos = [];
-let isSubmitting = false; // TRAVA DE CLIQUE DUPLO GERAL
-
-// =======================================================
-// LÓGICA DA FILA E SINCRONIZAÇÃO (OFFLINE-FIRST)
-// =======================================================
-let isSyncing = false;
-
-function mostrarToast(msg, cor = "#1f2937") {
-    let toast = document.getElementById("toast-rh");
-    if (!toast) {
-        toast = document.createElement("div");
-        toast.id = "toast-rh";
-        document.body.appendChild(toast);
-    }
-    toast.style.cssText = `visibility: visible; min-width: 250px; background-color: ${cor}; color: #fff; text-align: center; border-radius: 30px; padding: 14px; position: fixed; z-index: 10000; left: 50%; bottom: 80px; transform: translateX(-50%); font-size: 14px; font-weight: 600; box-shadow: 0px 8px 20px rgba(0,0,0,0.3); transition: opacity 0.3s, bottom 0.3s; opacity: 1;`;
-    toast.innerHTML = msg;
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.style.visibility='hidden', 300); }, 3000);
-}
-
-function adicionarNaFila(payload) {
-    let fila = JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || [];
-    payload._localId = Date.now() + Math.random().toString(36).substr(2, 5);
-    fila.push(payload);
-    localStorage.setItem('rh_fila_requisicoes', JSON.stringify(fila));
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a4d2e">
     
-    atualizarBotaoSyncManual();
-    sincronizarSegundoPlano(false); 
-}
-
-function atualizarBotaoSyncManual() {
-    let fila = JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || [];
-    let btn = document.getElementById('btn-sync-manual');
-    if (btn) {
-        if (fila.length > 0) {
-            btn.innerHTML = `<i class="ph ph-warning-circle"></i> Enviando ${fila.length} pendências...`;
-            btn.style.color = "#d97706"; btn.style.borderColor = "#d97706"; btn.style.backgroundColor = "#fffbeb";
-        } else {
-            btn.innerHTML = `<i class="ph ph-arrows-clockwise"></i> Sincronizar Dados`;
-            btn.style.color = "var(--cor-primaria)"; btn.style.borderColor = "var(--cor-primaria)"; btn.style.backgroundColor = "transparent";
+    <!-- BLOQUEADORES DE CACHE PARA CELULAR -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
+    <title>RH - Controle de EPIs Lince</title>
+    
+    <!-- Fontes e Ícones Modernos -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    
+    <!-- SweetAlert2 (Alertas Modernos) -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <style>
+        :root {
+            --cor-primaria: #1a4d2e;
+            --cor-primaria-hover: #133a22;
+            --cor-fundo: #f0f2f5;
+            --cor-card: #ffffff;
+            --cor-borda: #e5e7eb;
+            --cor-texto: #111827;
+            --cor-label: #6b7280;
+            --cor-input-bg: #f9fafb;
         }
-    }
-}
 
-async function sincronizarSegundoPlano(manual = false) {
-    if (!navigator.onLine) { if(manual) mostrarToast("<i class='ph ph-wifi-x'></i> Sem conexão à internet", "#dc2626"); return; }
-    if (isSyncing) { if(manual) mostrarToast("<i class='ph ph-spinner ph-spin'></i> Sincronização em andamento...", "#d97706"); return; }
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: var(--cor-fundo); 
+            margin: 0; padding: 0;
+            display: flex; flex-direction: column; align-items: center; 
+            color: var(--cor-texto); 
+            -webkit-font-smoothing: antialiased;
+        }
+        
+        .app-container { width: 100%; max-width: 500px; padding: 25px 20px; box-sizing: border-box; }
+        
+        .logo { width: 100%; max-width: 220px; display: block; margin: 0 auto 15px auto; }
+        .desenvolvedor { text-align: center; font-size: 11px; color: var(--cor-label); margin-top: -10px; margin-bottom: 25px; font-weight: 500; }
+        
+        .card { 
+            background: var(--cor-card); padding: 25px; border-radius: 16px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.04); margin-bottom: 20px; 
+            border: 1px solid rgba(0,0,0,0.02); 
+        }
+        
+        h2 { color: var(--cor-primaria); text-align: center; margin-top: 0; font-weight: 700; font-size: 22px; letter-spacing: -0.5px;}
+        h3 { color: var(--cor-texto); margin: 0 0 15px 0; padding-left: 10px; border-left: 4px solid var(--cor-primaria); display: inline-block; font-weight: 700; font-size: 16px; letter-spacing: -0.3px;}
+        h4 { color: var(--cor-texto); margin: 20px 0 10px 0; padding-bottom: 8px; border-bottom: 2px dashed var(--cor-borda); font-size: 14px; font-weight: 700; text-transform: uppercase;}
+        
+        .info-label { font-weight: 600; font-size: 12px; color: var(--cor-label); display: block; margin-bottom: 6px; margin-top: 12px; }
+        
+        .input-campo, select { 
+            width: 100%; padding: 14px 16px; margin-bottom: 10px; 
+            border: 1.5px solid var(--cor-borda); border-radius: 12px; 
+            box-sizing: border-box; font-size: 15px; font-family: 'Inter', sans-serif;
+            background-color: var(--cor-input-bg); color: var(--cor-texto); 
+            transition: all 0.3s ease; 
+        }
+        .input-campo:focus, select:focus { 
+            border-color: var(--cor-primaria); outline: none; background-color: #fff; 
+            box-shadow: 0 0 0 4px rgba(26, 77, 46, 0.1); 
+        }
+        .input-campo:read-only { background-color: #e5e7eb; color: #4b5563; cursor: not-allowed; border-color: transparent;}
+        
+        i.ph, i.ph-fill { font-size: 1.2em; vertical-align: middle; margin-right: 5px; margin-top: -2px; }
+        button i.ph, button i.ph-fill { margin-right: 8px; }
 
-    let fila = JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || [];
-    if (fila.length === 0) {
-        if (manual) { mostrarToast("<i class='ph ph-check-circle'></i> Tudo já está atualizado!", "#059669"); recarregarDadosSilenciosamente(); }
-        atualizarBotaoSyncManual(); return;
-    }
+        .btn-principal { 
+            background: linear-gradient(135deg, var(--cor-primaria) 0%, var(--cor-primaria-hover) 100%); 
+            color: white; border: none; border-radius: 14px; padding: 16px 20px; 
+            font-size: 15px; font-weight: 600; width: 100%; cursor: pointer; 
+            margin-bottom: 15px; box-shadow: 0 6px 15px rgba(26, 77, 46, 0.25); 
+            transition: transform 0.1s ease, box-shadow 0.2s ease; 
+            font-family: 'Inter', sans-serif; letter-spacing: 0.3px; 
+        }
+        .btn-principal:active { transform: scale(0.97); box-shadow: 0 2px 8px rgba(26, 77, 46, 0.2); }
+        .btn-principal:disabled { background: #9ca3af; cursor: not-allowed; box-shadow: none; transform: none; }
+        
+        .btn-secundario { 
+            background-color: #e5e7eb; color: #374151; border: none; border-radius: 14px; 
+            padding: 14px 20px; margin-bottom: 20px; font-size: 14px; font-weight: 600; 
+            width: 100%; cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif; 
+        }
+        .btn-secundario:active { transform: scale(0.97); background-color: #d1d5db; }
+        
+        .btn-sucesso { 
+            background: linear-gradient(135deg, #059669 0%, #047857 100%); 
+            color: white; border: none; border-radius: 12px; padding: 14px; 
+            font-size: 14px; font-weight: 600; width: 100%; cursor: pointer; 
+            margin-bottom: 15px; box-shadow: 0 4px 10px rgba(5, 150, 105, 0.2); transition: transform 0.2s; 
+        }
+        .btn-sucesso:active { transform: scale(0.97); }
 
-    isSyncing = true;
-    let novaFila = [...fila];
-    let processouAlgo = false;
+        .btn-pdf { 
+            background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%); 
+            color: white; border: none; border-radius: 12px; padding: 14px; 
+            font-size: 14px; font-weight: 600; width: 100%; cursor: pointer; 
+            margin-bottom: 15px; box-shadow: 0 6px 15px rgba(30, 58, 138, 0.25); transition: transform 0.2s; 
+        }
+        .btn-pdf:active { transform: scale(0.97); }
 
-    if(manual) mostrarToast(`<i class='ph ph-arrows-clockwise ph-spin'></i> Sincronizando ${fila.length} pendências...`, "#d97706");
+        .btn-acao-rapida { 
+            background-color: var(--cor-primaria); color: white; border: none; 
+            padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 11px; 
+            font-weight: 600; width: 100%; transition: all 0.2s; 
+        }
+        .btn-acao-rapida:active { transform: scale(0.95); background-color: var(--cor-primaria-hover); }
 
-    for (let i = 0; i < fila.length; i++) {
-        let reqPayload = fila[i];
-        try {
-            let p = {...reqPayload}; delete p._localId;
-            let resp = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p), headers: { "Content-Type": "text/plain;charset=utf-8" }});
-            let resJSON;
-            try { resJSON = await resp.json(); } catch(e) { continue; }
+        .btn-editar { 
+            background: #fef3c7 !important; border: 1px solid #fde68a !important; 
+            color: #d97706 !important; border-radius: 8px !important; padding: 6px 10px !important; 
+            font-size: 12px !important; font-weight: 600 !important; cursor: pointer; transition: all 0.2s; 
+        }
+        .btn-editar:active { background: #fde68a !important; transform: scale(0.95); }
+
+        .btn-whatsapp { 
+            background-color: #25D366; color: white; border: none; border-radius: 12px; 
+            padding: 14px; font-size: 14px; font-weight: 600; width: 100%; cursor: pointer; 
+            margin-top: 10px; box-shadow: 0 4px 10px rgba(37, 211, 102, 0.3); 
+            display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+        }
+        .btn-whatsapp:active { transform: scale(0.97); background-color: #128C7E; }
+
+        .linha-item { 
+            border: 1.5px dashed var(--cor-borda); padding: 15px; border-radius: 14px; 
+            margin-bottom: 15px; background: #fafafa; position: relative; transition: border-color 0.3s; 
+        }
+        .linha-item:hover { border-color: var(--cor-primaria); }
+        .btn-remover { 
+            position: absolute; top: 10px; right: 10px; background: #fee2e2; color: #dc2626; 
+            border: 1px solid #fecaca; border-radius: 8px; padding: 4px 8px; cursor: pointer; 
+            font-size: 11px; font-weight: 600; transition: all 0.2s; 
+        }
+        .btn-remover:active { background: #fecaca; transform: scale(0.95); }
+        
+        canvas { 
+            border: 1.5px dashed var(--cor-primaria); background: #fff; width: 100%; 
+            height: 140px; border-radius: 12px; touch-action: none; margin-bottom: 10px; cursor: crosshair; 
+        }
+        
+        table { 
+            width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; 
+            margin-top: 10px; border-radius: 12px; overflow: hidden; background: white; 
+            border: 1px solid var(--cor-borda);
+        }
+        th, td { border-bottom: 1px solid var(--cor-borda); padding: 12px 8px; text-align: center; vertical-align: middle; word-wrap: break-word;}
+        th { background-color: var(--cor-input-bg); color: var(--cor-texto); font-weight: 700; font-size: 11px; }
+        tr:last-child td { border-bottom: none; }
+        
+        .status-valido { color: #059669; font-weight: 700; background: #d1fae5; padding: 4px 8px; border-radius: 20px; display: inline-block; font-size: 11px; letter-spacing: 0.3px;} 
+        .status-vencido { color: #dc2626; font-weight: 700; background: #fee2e2; padding: 4px 8px; border-radius: 20px; display: inline-block; font-size: 11px; letter-spacing: 0.3px;}
+        .status-neutro { color: #d97706; font-weight: 700; background: #fef3c7; padding: 4px 8px; border-radius: 20px; display: inline-block; font-size: 11px; letter-spacing: 0.3px;}
+
+        .modal-overlay { 
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); 
+            display: none; justify-content: center; align-items: center; z-index: 9999; 
+            backdrop-filter: blur(3px); padding: 20px; 
+        }
+        .modal-box { 
+            background: white; padding: 25px; border-radius: 20px; width: 100%; 
+            max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); max-height: 90vh; overflow-y: auto; 
+        }
+        
+        .cracha-demissao { 
+            background: #fef2f2; color: #b91c1c; padding: 12px; border-radius: 12px; 
+            text-align: center; margin-bottom: 15px; font-weight: 600; font-size: 12px; 
+            border: 1.5px dashed #fca5a5; display: none; 
+        }
+        .cracha-ativo { 
+            background: #ecfdf5; color: #047857; padding: 12px; border-radius: 12px; 
+            text-align: center; margin-bottom: 15px; font-weight: 600; font-size: 12px; 
+            border: 1.5px dashed #6ee7b7; display: none; 
+        }
+
+        @media (max-width: 600px) {
+            .app-container { padding: 15px 10px; }
+            .logo { max-width: 180px; margin-bottom: 10px; }
+            .card { padding: 15px; border-radius: 14px; }
+            h2 { font-size: 18px; margin-bottom: 15px; }
+            h3 { font-size: 14px; margin-bottom: 10px; }
+            .info-label { font-size: 11px; margin-top: 10px; margin-bottom: 4px; }
+            .input-campo, select { font-size: 13px; padding: 12px; border-radius: 10px; margin-bottom: 8px; }
+            .btn-principal, .btn-whatsapp { font-size: 14px; padding: 14px; border-radius: 12px; margin-bottom: 10px; }
+            .btn-secundario, .btn-sucesso, .btn-pdf { font-size: 13px; padding: 12px; border-radius: 12px; margin-bottom: 10px; }
+            table { font-size: 11px; }
+            th, td { padding: 8px 4px; }
+            th { font-size: 10px; }
+            .status-valido, .status-vencido, .status-neutro { font-size: 10px; padding: 3px 6px; }
+            .linha-item { padding: 12px; border-radius: 12px; margin-bottom: 12px; }
+            .btn-remover { font-size: 10px; padding: 4px 6px; }
+            .btn-acao-rapida, .btn-editar { font-size: 10px; padding: 6px 8px; }
+        }
+    </style>
+</head>
+<body>
+
+    <datalist id="opcoes-ca"><option value="N/A"></option></datalist>
+
+    <!-- TELA LOGIN -->
+    <div id="tela-login" class="app-container">
+        <div class="card">
+            <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
+            <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
             
-            if (resJSON.erro) { console.error("Erro:", resJSON.erro); continue; }
-            if (resJSON.sucesso) {
-                novaFila = novaFila.filter(item => item._localId !== reqPayload._localId);
-                localStorage.setItem('rh_fila_requisicoes', JSON.stringify(novaFila));
-                processouAlgo = true;
+            <h2><i class="ph ph-lock-key"></i> SISTEMA RH</h2>
+            <label class="info-label">Acesso Restrito</label>
+            <input type="text" id="campo-usuario" class="input-campo" placeholder="Usuário">
+            <input type="password" id="campo-senha" class="input-campo" placeholder="Senha">
+            <button class="btn-principal" id="btn-login" onclick="fazerLogin()"><i class="ph ph-sign-in"></i> Acessar Sistema</button>
+        </div>
+    </div>
+
+    <!-- TELA MENU PRINCIPAL -->
+    <div id="tela-menu" class="app-container" style="display: none;">
+        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo">
+        <div class="desenvolvedor">Desenvolvido por João Marcelo Magon Bonini</div>
+
+        <div class="card">
+            <h2>MENU PRINCIPAL</h2>
+            <button class="btn-principal" onclick="abrirTelaEntrega()"><i class="ph ph-hard-hat"></i> Entrega de EPIs</button>
+            <button class="btn-principal" onclick="abrirTela('tela-consulta')"><i class="ph ph-magnifying-glass"></i> Consulta Histórico</button>
+            <button class="btn-principal" onclick="abrirTela('tela-cadastro-colab')"><i class="ph ph-user-plus"></i> Cadastrar Colaborador</button>
+            <button class="btn-principal" onclick="abrirTela('tela-estoque')"><i class="ph ph-package"></i> Estoque & Compras</button>
+            
+            <button class="btn-secundario" style="margin-top: 15px; margin-bottom: 10px; border: 1.5px dashed var(--cor-primaria); color: var(--cor-primaria); background: transparent;" onclick="forcarSincronizacaoManual()" id="btn-sync-manual"><i class="ph ph-arrows-clockwise"></i> Sincronizar Dados</button>
+            <button class="btn-secundario" style="margin-bottom:0;" onclick="sairDoSistema()"><i class="ph ph-sign-out"></i> Sair do Sistema</button>
+        </div>
+    </div>
+
+    <!-- TELA ENTREGA DE EPIS -->
+    <div id="tela-entrega" class="app-container" style="display: none;">
+        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo" style="max-width: 150px;">
+        <div class="desenvolvedor" style="margin-bottom: 15px;">Desenvolvido por João Marcelo Magon Bonini</div>
+
+        <button class="btn-secundario" style="padding: 12px; font-size: 13px;" onclick="abrirTela('tela-menu')"><i class="ph ph-arrow-left"></i> Voltar ao Menu</button>
+        <div class="card">
+            <h3>NOVA ENTREGA DE EPI</h3>
+            
+            <label class="info-label">Data e Hora da Entrega:</label>
+            <input type="datetime-local" id="ent-data" class="input-campo" onchange="recalcularTodasAsValidades()">
+
+            <label class="info-label">Busque o Colaborador (Apenas Ativos):</label>
+            <input type="text" id="busca-ent-colab" class="input-campo" placeholder="🔍 Digite para filtrar nomes..." onkeyup="filtrarColab(this.value, 'ent-colab')">
+            <select id="ent-colab" class="input-campo" onchange="preencherDadosColab()"></select>
+            
+            <input type="hidden" id="ent-funcao"><input type="hidden" id="ent-setor"><input type="hidden" id="ent-admissao"><input type="hidden" id="ent-matricula">
+            
+            <h4>ITENS DA ENTREGA</h4>
+            <div id="container-itens-epi"></div>
+            <button class="btn-sucesso" onclick="adicionarItemEPI()"><i class="ph ph-plus-circle"></i> Adicionar EPI à Ficha</button>
+            
+            <h4>COMPROVAÇÃO</h4>
+            <label class="info-label">Foto do Recebimento (Câmera/Arquivo):</label>
+            <input type="file" id="ent-foto" accept="image/*" capture="environment" class="input-campo" onchange="processarFoto(this)" style="padding: 10px;">
+            
+            <label class="info-label">Assinatura do Colaborador: *</label>
+            <canvas id="canvas-ass"></canvas>
+            <button class="btn-secundario" style="padding:10px; font-size: 12px; margin-bottom: 0;" onclick="limparPad()"><i class="ph ph-eraser"></i> Limpar Assinatura</button>
+            
+            <button class="btn-principal" id="btn-salvar-entrega" style="margin-top: 20px; margin-bottom: 0; background: linear-gradient(135deg, #1e40af 0%, #1e3a8a 100%); box-shadow: 0 6px 15px rgba(30, 58, 138, 0.25);" onclick="salvarEntrega()"><i class="ph ph-floppy-disk"></i> Finalizar e Gerar PDF</button>
+        </div>
+    </div>
+
+    <!-- TELA CONSULTA HISTÓRICO -->
+    <div id="tela-consulta" class="app-container" style="display: none;">
+        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo" style="max-width: 150px;">
+        <div class="desenvolvedor" style="margin-bottom: 15px;">Desenvolvido por João Marcelo Magon Bonini</div>
+
+        <button class="btn-secundario" style="padding: 12px; font-size: 13px;" onclick="abrirTela('tela-menu')"><i class="ph ph-arrow-left"></i> Voltar ao Menu</button>
+        <div class="card">
+            <h3>PAINEL DO COLABORADOR</h3>
+            <label class="info-label">Busque o Colaborador:</label>
+            <input type="text" id="busca-cons-colab" class="input-campo" placeholder="🔍 Digite para filtrar..." onkeyup="filtrarColab(this.value, 'cons-colab')">
+            <select id="cons-colab" class="input-campo" onchange="carregarFichaColab()"></select>
+
+            <div id="cracha-ativo" class="cracha-ativo"><i class="ph-fill ph-check-circle"></i> COLABORADOR ATIVO<br><span style="font-weight: 500; font-size: 11px;">Admissão: <span id="cracha-adm1"></span></span></div>
+            <div id="cracha-demitido" class="cracha-demissao"><i class="ph-fill ph-x-circle"></i> COLABORADOR DESLIGADO<br><span style="font-weight: 500; font-size: 11px;">Admissão: <span id="cracha-adm2"></span> | Demissão: <span id="cracha-dem"></span></span></div>
+            
+            <div id="box-demissao" style="display:none; background:#fafafa; padding:15px; border-radius:12px; margin-bottom:15px; border: 1.5px dashed var(--cor-borda);">
+                <div id="area-demitir">
+                    <label class="info-label" style="margin-top:0;">Registrar Desligamento:</label>
+                    <div style="display:flex; gap:10px;">
+                        <input type="date" id="input-demissao" class="input-campo" style="margin-bottom:0;">
+                        <button class="btn-secundario" style="margin-bottom:0; background:#dc2626; color: white;" onclick="salvarDemissao()">Salvar</button>
+                    </div>
+                </div>
+                
+                <div id="area-recontratar" style="display:none; margin-top:15px; padding-top:15px; border-top:1px solid var(--cor-borda);">
+                    <label class="info-label" style="margin-top:0; color:var(--cor-primaria);">🔄 Recontratar Colaborador</label>
+                    <div style="display:flex; gap:10px;">
+                        <div style="flex:1;">
+                            <span style="font-size:10px; color:var(--cor-label); font-weight: 600;">Nova Admissão:</span>
+                            <input type="date" id="input-nova-admissao" class="input-campo" style="margin-bottom:0; padding:10px;">
+                        </div>
+                        <div style="display:flex; align-items:flex-end;">
+                            <button class="btn-sucesso" style="margin-bottom:0; padding:10px 15px;" onclick="recontratarColaborador()">Reativar</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="btn-pdf" id="btn-gerar-pdf-ficha" style="display:none; margin-bottom: 15px;" onclick="solicitarPdfColaborador()"><i class="ph ph-file-pdf"></i> Gerar Ficha Completa (PDF)</button>
+            <div id="resultado-ficha" style="overflow-x: auto;"></div>
+        </div>
+    </div>
+
+    <!-- TELA CADASTRAR COLABORADOR -->
+    <div id="tela-cadastro-colab" class="app-container" style="display: none;">
+        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo" style="max-width: 150px;">
+        <div class="desenvolvedor" style="margin-bottom: 15px;">Desenvolvido por João Marcelo Magon Bonini</div>
+
+        <button class="btn-secundario" style="padding: 12px; font-size: 13px;" onclick="abrirTela('tela-menu')"><i class="ph ph-arrow-left"></i> Voltar ao Menu</button>
+        <div class="card">
+            <h3>CADASTRAR COLABORADOR</h3>
+            <label class="info-label">Matrícula:</label>
+            <input type="text" id="cad-mat" class="input-campo" placeholder="Ex: 1542">
+            <label class="info-label">Nome Completo:</label>
+            <input type="text" id="cad-nome" class="input-campo" placeholder="Nome sem abreviações">
+            
+            <label class="info-label">Função / Cargo:</label>
+            <select id="cad-func-select" class="input-campo" onchange="if(this.value === 'NOVO') { document.getElementById('cad-func-novo').style.display = 'block'; } else { document.getElementById('cad-func-novo').style.display = 'none'; }"></select>
+            <input type="text" id="cad-func-novo" class="input-campo" placeholder="Digite o nome da nova função..." style="display:none; margin-top: -5px;">
+            
+            <label class="info-label">Setor:</label>
+            <select id="cad-setor" class="input-campo">
+                <option value="">Selecione o Setor...</option>
+                <option value="ADM">ADMINISTRATIVO</option>
+                <option value="COMERCIAL">COMERCIAL</option>
+                <option value="LOGÍSTICA">LOGÍSTICA</option>
+                <option value="OPERACIONAL">OPERACIONAL</option>
+                <option value="PUXADA">PUXADA</option>
+            </select>
+            <label class="info-label">Data de Admissão:</label>
+            <input type="date" id="cad-adm" class="input-campo">
+            <button class="btn-principal" id="btn-salvar-colab" style="margin-bottom: 0;" onclick="salvarNovoColab()"><i class="ph ph-floppy-disk"></i> Cadastrar no Sistema</button>
+        </div>
+    </div>
+
+    <!-- TELA ESTOQUE -->
+    <div id="tela-estoque" class="app-container" style="display: none;">
+        <img src="https://i.postimg.cc/x1Dpgf8n/capa-app-logistica-(400-x-400-px)-(2).png" alt="Logo Lince" class="logo" style="max-width: 150px;">
+        <div class="desenvolvedor" style="margin-bottom: 15px;">Desenvolvido por João Marcelo Magon Bonini</div>
+
+        <button class="btn-secundario" style="padding: 12px; font-size: 13px;" onclick="abrirTela('tela-menu')"><i class="ph ph-arrow-left"></i> Voltar ao Menu</button>
+        
+        <div class="card">
+            <h3>📥 LANÇAR ENTRADA</h3>
+            <label class="info-label">EPI Adquirido:</label>
+            <select id="est-epi" class="input-campo"></select>
+            <div style="display:flex; gap:10px;">
+                <div style="flex:1;">
+                    <label class="info-label">Quantidade:</label>
+                    <input type="number" id="est-qtd" class="input-campo" placeholder="Ex: 10">
+                </div>
+                <div style="flex:2;">
+                    <label class="info-label">NF / Fornecedor:</label>
+                    <input type="text" id="est-nf" class="input-campo" placeholder="Nº da Nota">
+                </div>
+            </div>
+            <button class="btn-principal" id="btn-salvar-entrada" style="margin-bottom: 0;" onclick="salvarEntrada()"><i class="ph ph-floppy-disk"></i> Registrar Entrada</button>
+        </div>
+
+        <div class="card">
+            <h3>📦 SALDO ATUAL</h3>
+            <button class="btn-pdf" id="btn-pdf-estoque" onclick="gerarRelatorioEstoque()"><i class="ph ph-file-pdf"></i> Gerar PDF do Estoque</button>
+            <div id="tabela-estoque" style="overflow-x: auto;"></div>
+        </div>
+    </div>
+
+    <!-- MODAL DE EDIÇÃO DO ESTOQUE -->
+    <div id="modal-estoque" class="modal-overlay">
+        <div class="modal-box">
+            <h3 style="margin-top:0; border-left: none; padding-left: 0; text-align: center;"><i class="ph ph-pencil-simple"></i> Ajustar Estoque</h3>
+            <p id="adj-epi-nome" style="font-weight:700; text-align:center; color:var(--cor-texto); font-size:14px; margin-bottom:20px; border-bottom: 1px dashed var(--cor-borda); padding-bottom: 10px;"></p>
+            <input type="hidden" id="adj-epi-hidden">
+            <input type="hidden" id="adj-ent-atual">
+            <input type="hidden" id="adj-sai-atual">
+
+            <label class="info-label">Total de Entradas:</label>
+            <input type="number" id="adj-ent-nova" class="input-campo" oninput="recalcularSaldoEstoque()">
+            
+            <label class="info-label">Total de Saídas (Entregas):</label>
+            <input type="number" id="adj-sai-nova" class="input-campo" oninput="recalcularSaldoEstoque()">
+            
+            <label class="info-label">Saldo Final Resultante:</label>
+            <input type="number" id="adj-saldo-novo" class="input-campo" readonly style="background:#ecfdf5; font-weight:bold; color: #047857; border-color: #34d399;">
+            
+            <button class="btn-principal" id="btn-salvar-estoque" style="margin-top:15px; margin-bottom: 10px;" onclick="salvarAjusteEstoque()"><i class="ph ph-floppy-disk"></i> Salvar Ajuste</button>
+            <button class="btn-secundario" style="margin-bottom: 0;" onclick="document.getElementById('modal-estoque').style.display='none'">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- MODAL DE EDIÇÃO DE ITEM DE HISTÓRICO -->
+    <div id="modal-edicao" class="modal-overlay">
+        <div class="modal-box">
+            <h3 style="margin-top:0; border-left: none; padding-left: 0; text-align: center;"><i class="ph ph-pencil-simple"></i> Editar Histórico</h3>
+            <p id="edit-nome-epi" style="font-weight:700; text-align:center; color:var(--cor-texto); font-size:14px; margin-bottom:20px; border-bottom: 1px dashed var(--cor-borda); padding-bottom: 10px;"></p>
+            <input type="hidden" id="edit-id">
+
+            <label class="info-label">Data e Hora da Entrega:</label>
+            <input type="datetime-local" id="edit-data" class="input-campo">
+            
+            <label class="info-label">C.A.:</label>
+            <input type="text" id="edit-ca" class="input-campo">
+            
+            <label class="info-label">Quantidade:</label>
+            <input type="number" id="edit-qtd" class="input-campo">
+            
+            <label class="info-label">Duração (Dias):</label>
+            <input type="number" id="edit-duracao" class="input-campo">
+            
+            <label class="info-label">Motivo:</label>
+            <select id="edit-motivo" class="input-campo">
+                <option>1ª Entrega</option>
+                <option>Troca por Desgaste</option>
+                <option>Perda/Dano</option>
+                <option>Extensão do Prazo</option>
+            </select>
+            
+            <button class="btn-principal" id="btn-salvar-edicao" style="margin-top:15px; margin-bottom: 10px;" onclick="salvarEdicaoItem()"><i class="ph ph-floppy-disk"></i> Confirmar Edição</button>
+            <button class="btn-secundario" style="margin-bottom: 0;" onclick="fecharModalEdicao()">Cancelar</button>
+        </div>
+    </div>
+
+    <!-- MODAL DE VENCIDOS E WHATSAPP -->
+    <div id="modal-vencidos" class="modal-overlay">
+        <div class="modal-box" style="text-align:center;">
+            <i class="ph-fill ph-warning-circle" style="font-size: 50px; color: #dc2626; margin-bottom: 10px;"></i>
+            <h2 style="color:#dc2626; margin-top:0;">ATENÇÃO!</h2>
+            <p style="font-weight:600; font-size:15px; color: var(--cor-texto);">O sistema detectou <br><span id="qtd-vencidos" style="color:#dc2626; font-size:24px; font-weight: 800;">0</span><br> EPIs Vencidos!</p>
+            
+            <label class="info-label" style="text-align: left;">Filtrar notificação por setor:</label>
+            <select id="modal-setor-whatsapp" class="input-campo" style="margin-bottom: 15px;">
+                <option value="TODOS">Enviar Todos os Setores</option>
+                <option value="ADM">Administrativo (ADM)</option>
+                <option value="COMERCIAL">Comercial</option>
+                <option value="LOGÍSTICA">Logística</option>
+                <option value="OPERACIONAL">Operacional</option>
+                <option value="PUXADA">Puxada</option>
+            </select>
+            
+            <button class="btn-whatsapp" onclick="enviarWhatsappGestor()"><i class="ph-fill ph-whatsapp-logo" style="font-size: 1.5em;"></i> Notificar no WhatsApp</button>
+            <button class="btn-secundario" style="margin-top:10px; margin-bottom:0;" onclick="document.getElementById('modal-vencidos').style.display='none'">Fechar Aviso</button>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SCRIPT CENTRALIZADO DO APLICATIVO          -->
+    <!-- ========================================== -->
+    <script>
+        /* =========================================================
+           SISTEMA RH LINCE - JAVASCRIPT FRONT-END (BLINDADO)
+           ========================================================= */
+
+        const API_URL = "https://script.google.com/macros/s/AKfycbxTQkw4ktau8c21iYHsWGWCHRGuNprtU6eJJTXoOX5ij-UHzQ1YRkZYyRRMNoiCL5pUQA/exec";
+
+        let bd = {}; let itemCount = 0; let b64Foto = ""; let isDrawing = false; let ctx;
+        window.statusEpiAtual = {}; 
+        window.listaGlobaisVencidos = [];
+        let isSubmitting = false; // TRAVA DE CLIQUE DUPLO GERAL
+
+        // =======================================================
+        // LÓGICA DA FILA E SINCRONIZAÇÃO (OFFLINE-FIRST)
+        // =======================================================
+        let isSyncing = false;
+
+        function mostrarToast(msg, cor = "#1f2937") {
+            let toast = document.getElementById("toast-rh");
+            if (!toast) {
+                toast = document.createElement("div");
+                toast.id = "toast-rh";
+                document.body.appendChild(toast);
             }
-        } catch (e) { break; }
-    }
-
-    atualizarBotaoSyncManual();
-    
-    if (processouAlgo) {
-        if (novaFila.length === 0) {
-            mostrarToast("<i class='ph ph-check-circle'></i> Tudo sincronizado com sucesso!", "#059669");
-        } else {
-            mostrarToast(`<i class='ph ph-warning'></i> Sobraram ${novaFila.length} itens (Sem rede)`, "#dc2626");
+            toast.style.cssText = `visibility: visible; min-width: 250px; background-color: ${cor}; color: #fff; text-align: center; border-radius: 30px; padding: 14px; position: fixed; z-index: 10000; left: 50%; bottom: 80px; transform: translateX(-50%); font-size: 14px; font-weight: 600; box-shadow: 0px 8px 20px rgba(0,0,0,0.3); transition: opacity 0.3s, bottom 0.3s; opacity: 1;`;
+            toast.innerHTML = msg;
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.style.visibility='hidden', 300); }, 3000);
         }
-        recarregarDadosSilenciosamente();
-    }
-    isSyncing = false;
-}
 
-async function forcarSincronizacaoManual() {
-    let btn = document.getElementById('btn-sync-manual');
-    if(!btn) return;
-    let originalHtml = btn.innerHTML;
-    btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Sincronizando...";
-    btn.disabled = true;
-    await sincronizarSegundoPlano(true);
-    btn.disabled = false;
-    atualizarBotaoSyncManual();
-}
-
-setInterval(() => sincronizarSegundoPlano(false), 30000); 
-document.addEventListener("visibilitychange", function() { if (document.visibilityState === 'visible') sincronizarSegundoPlano(false); });
-
-// =======================================================
-// CARREGAMENTO E LOGIN
-// =======================================================
-async function recarregarDadosSilenciosamente() {
-    try {
-        let fila = JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || [];
-        if(fila.length > 0) return; 
-
-        let r2 = await fetch(`${API_URL}?acao=buscar_inicial`);
-        let d2 = await r2.json();
-        if(d2.sucesso) {
-            bd = d2;
-            localStorage.setItem('lince_bd', JSON.stringify(bd));
-            popularListas();
-            if(document.getElementById('tela-consulta').style.display === 'block') { carregarFichaColab(); } 
-            verificarVencidosGlobais();
-        }
-    } catch(e) {}
-}
-
-window.onload = function() {
-    let bdSalvo = localStorage.getItem('lince_bd');
-    if(bdSalvo) { try { bd = JSON.parse(bdSalvo); popularListas(); } catch(e) {} }
-
-    atualizarBotaoSyncManual();
-
-    let userSalvo = localStorage.getItem('lince_user');
-    if(userSalvo) {
-        let userObj = JSON.parse(userSalvo);
-        window.usuarioLogado = userObj.u;
-        abrirTela('tela-menu');
-        initPad();
-        if(bdSalvo) verificarVencidosGlobais();
-        recarregarDadosSilenciosamente();
-    }
-};
-
-function sairDoSistema() {
-    localStorage.removeItem('lince_user');
-    location.reload();
-}
-
-async function fazerLogin() {
-    let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
-    if(!u || !s) return Swal.fire("Atenção", "Preencha Usuário e Senha para continuar!", "warning");
-    
-    let btn = document.getElementById('btn-login');
-    btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Sincronizando... ⏳"; 
-    btn.disabled = true;
-    
-    try {
-        let r = await fetch(`${API_URL}?acao=login&usuario=${u}&senha=${s}`); 
-        let d = await r.json();
-        
-        if(d.sucesso){
-            window.usuarioLogado = u; 
-            bd = d.bd; 
-            localStorage.setItem('lince_user', JSON.stringify({u: u, s: s}));
-            localStorage.setItem('lince_bd', JSON.stringify(bd));
+        function adicionarNaFila(payload) {
+            let fila = JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || [];
+            payload._localId = Date.now() + Math.random().toString(36).substr(2, 5);
+            fila.push(payload);
+            localStorage.setItem('rh_fila_requisicoes', JSON.stringify(fila));
             
-            popularListas(); 
-            abrirTela('tela-menu'); 
-            initPad();
-            verificarVencidosGlobais();
-        } else { Swal.fire("Acesso Negado", d.erro || "Usuário ou Senha incorretos!", "error"); }
-    } catch(e) { Swal.fire("Erro de Rede", "Verifique o link do Apps Script ou sua conexão de internet.", "error"); }
-    
-    btn.innerHTML = "<i class='ph ph-sign-in'></i> Acessar Sistema";
-    btn.disabled = false;
-}
-
-// =======================================================
-// UTILITÁRIOS E NAVEGAÇÃO
-// =======================================================
-function abrirTela(id) { 
-    document.querySelectorAll('.app-container').forEach(t => t.style.display = 'none'); 
-    document.getElementById(id).style.display = 'block'; 
-}
-
-function abrirTelaEntrega() {
-    abrirTela('tela-entrega');
-    let n = new Date(); let hL = new Date(n.getTime() - (n.getTimezoneOffset() * 60000)).toISOString().slice(0,16);
-    document.getElementById('ent-data').value = hL;
-    document.getElementById('container-itens-epi').innerHTML = ""; 
-    itemCount = 0;
-    document.getElementById('ent-colab').value = "";
-    document.getElementById('ent-funcao').value = "";
-    limparPad();
-}
-
-function limitarTexto(texto, tamanhoMax) {
-    if (texto.length <= tamanhoMax) return texto;
-    return texto.substring(0, tamanhoMax - 3) + "...";
-}
-
-function getBaseEpiName(epiName) { return String(epiName).replace(/\s*\([^)]+\)$/, '').trim(); }
-
-// =======================================================
-// RENDERIZAÇÃO DE LISTAS E ESTOQUE
-// =======================================================
-function popularListas() {
-    filtrarColab('', 'ent-colab');
-    filtrarColab('', 'cons-colab');
-    
-    let optEPI = '<option value="">Selecione o EPI...</option>';
-    bd.epis.sort().forEach(e => optEPI += `<option value="${e}">${e}</option>`);
-    document.getElementById('est-epi').innerHTML = optEPI;
-
-    let funcoesSet = new Set();
-    bd.colaboradores.forEach(c => { if(c.funcao) funcoesSet.add(c.funcao.toUpperCase()); });
-    bd.validades.forEach(v => { if(v.funcao) funcoesSet.add(v.funcao.toUpperCase()); });
-    
-    let optFuncoes = '<option value="">Selecione a função...</option>';
-    Array.from(funcoesSet).sort().forEach(f => optFuncoes += `<option value="${f}">${f}</option>`);
-    optFuncoes += '<option value="NOVO">+ CADASTRAR NOVA FUNÇÃO</option>';
-    document.getElementById('cad-func-select').innerHTML = optFuncoes;
-
-    let htmlEst = "<table><tr><th>EPI</th><th>ENTRADA</th><th>SAÍDA</th><th>SALDO FINAL</th><th>AÇÕES</th></tr>";
-    bd.estoque.forEach(e => { 
-        htmlEst += `<tr>
-            <td style="text-align:left;"><b>${e.epi}</b></td>
-            <td>${e.entradas}</td>
-            <td>${e.saidas}</td>
-            <td style="color:#1a4d2e; font-size:13px;"><b>${e.saldo}</b></td>
-            <td><button class="btn-editar" onclick="abrirModalEstoque('${e.epi}', ${e.entradas}, ${e.saidas})" style="margin:0;"><i class="ph-fill ph-pencil-simple"></i></button></td>
-        </tr>`; 
-    });
-    document.getElementById('tabela-estoque').innerHTML = htmlEst + "</table>";
-}
-
-function filtrarColab(texto, selectId) {
-    let select = document.getElementById(selectId);
-    let options = '<option value="">Selecione o Colaborador...</option>';
-    bd.colaboradores.sort((a,b) => a.nome.localeCompare(b.nome)).forEach(c => {
-        if(selectId === 'ent-colab' && !c.ativo) return; 
-        if(c.nome.toLowerCase().includes(texto.toLowerCase())) { 
-            let tag = c.ativo ? '' : ' [OFF]';
-            let textoCompleto = `${c.nome} - ${c.funcao}${tag}`;
-            let textoCurto = limitarTexto(textoCompleto, 36); 
-            options += `<option value="${c.nome}">${textoCurto}</option>`; 
+            atualizarBotaoSyncManual();
+            sincronizarSegundoPlano(false); 
         }
-    });
-    select.innerHTML = options;
-    if(selectId === 'ent-colab') preencherDadosColab();
-    if(selectId === 'cons-colab') carregarFichaColab();
-}
 
-function preencherDadosColab() {
-    let nome = document.getElementById('ent-colab').value;
-    let c = bd.colaboradores.find(x => x.nome === nome);
-    
-    if(c){ 
-        document.getElementById('ent-funcao').value = c.funcao; 
-        document.getElementById('ent-setor').value = c.setor; 
-        document.getElementById('ent-admissao').value = c.admissao; 
-        document.getElementById('ent-matricula').value = c.matricula; 
-    } else { 
-        document.getElementById('ent-funcao').value = ""; 
-    }
-    
-    window.statusEpiAtual = {};
-    let cNome = String(nome).trim().toUpperCase().replace(/\s+/g, ' ');
-    let f = bd.fichas[cNome];
-    if(f) { f.forEach(item => { window.statusEpiAtual[String(item.epi).trim().toUpperCase()] = item.prox_troca; }); }
-    
-    // Reseta os itens sempre que mudar o colaborador
-    document.getElementById('container-itens-epi').innerHTML = "";
-    itemCount = 0;
-}
-
-function getEpiBadge(epiName) {
-    let epiKey = String(epiName).trim().toUpperCase();
-    let proxTrocaStr = window.statusEpiAtual[epiKey];
-
-    if (!proxTrocaStr) return "⚪ NOVO"; 
-    if (proxTrocaStr === "---" || proxTrocaStr === "N/A") return "🟢 S/ VAL."; 
-
-    let p = proxTrocaStr.split('/');
-    if(p.length === 3) {
-        let dTroca = new Date(p[2], p[1]-1, p[0]).getTime();
-        let hj = new Date(); hj.setHours(0,0,0,0);
-        let diffDias = Math.ceil((dTroca - hj.getTime()) / (1000 * 3600 * 24));
-
-        if (diffDias < 0) return `🔴 VENCIDO (${Math.abs(diffDias)}d)`; 
-        if (diffDias <= 15) return `🟡 VENCE EM ${diffDias}d`; 
-        return `🟢 VÁLIDO (${diffDias}d)`; 
-    }
-    return "⚪ DESC.";
-}
-
-function gerarOpcoesEpiAgrupadas(selectAtual) {
-    let funcAtual = document.getElementById('ent-funcao').value;
-    if (!funcAtual) return '<option value="">Selecione o Colaborador primeiro...</option>';
-
-    let episSelecionados = [];
-    document.querySelectorAll('.sel-epi').forEach(sel => {
-        if(sel !== selectAtual && sel.value) episSelecionados.push(String(sel.value).trim().toUpperCase());
-    });
-
-    let episDaFuncao = bd.validades.filter(v => String(v.funcao).trim().toUpperCase() === String(funcAtual).trim().toUpperCase());
-    let nomesEpisDaFuncao = episDaFuncao.map(v => String(v.epi).trim().toUpperCase());
-
-    let optFuncao = '<optgroup label="OBRIGATÓRIOS DA FUNÇÃO">';
-    let optOutros = '<optgroup label="OUTROS EPIs (Avulsos)">';
-
-    bd.epis.sort().forEach(e => {
-        let eUpper = String(e).trim().toUpperCase();
-        let status = getEpiBadge(e);
-        let isSelected = episSelecionados.includes(eUpper);
-        let checkmark = isSelected ? "✅ " : ""; 
-        let disabledAttr = isSelected ? "disabled" : "";
-        let textoCurto = limitarTexto(`${checkmark}${e} [${status}]`, 36);
-
-        if (nomesEpisDaFuncao.includes(eUpper)) { 
-            optFuncao += `<option value="${e}" ${disabledAttr}>${textoCurto}</option>`; 
-        } else { 
-            optOutros += `<option value="${e}" ${disabledAttr}>${textoCurto}</option>`; 
+        function atualizarBotaoSyncManual() {
+            let fila = JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || [];
+            let btn = document.getElementById('btn-sync-manual');
+            if (btn) {
+                if (fila.length > 0) {
+                    btn.innerHTML = `<i class="ph ph-warning-circle"></i> Enviando ${fila.length} pendências...`;
+                    btn.style.color = "#d97706"; btn.style.borderColor = "#d97706"; btn.style.backgroundColor = "#fffbeb";
+                } else {
+                    btn.innerHTML = `<i class="ph ph-arrows-clockwise"></i> Sincronizar Dados`;
+                    btn.style.color = "var(--cor-primaria)"; btn.style.borderColor = "var(--cor-primaria)"; btn.style.backgroundColor = "transparent";
+                }
+            }
         }
-    });
 
-    optFuncao += '</optgroup>'; optOutros += '</optgroup>';
-    return '<option value="">Selecione o EPI entregue...</option>' + optFuncao + optOutros;
-}
+        async function sincronizarSegundoPlano(manual = false) {
+            if (!navigator.onLine) { if(manual) mostrarToast("<i class='ph ph-wifi-x'></i> Sem conexão à internet", "#dc2626"); return; }
+            if (isSyncing) { if(manual) mostrarToast("<i class='ph ph-spinner ph-spin'></i> Sincronização em andamento...", "#d97706"); return; }
 
-function atualizarTodosDropdownsEpi() {
-    document.querySelectorAll('.sel-epi').forEach(sel => {
-        let valorAtual = sel.value; 
-        sel.innerHTML = gerarOpcoesEpiAgrupadas(sel);
-        sel.value = valorAtual; 
-    });
-}
+            let fila = JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || [];
+            if (fila.length === 0) {
+                if (manual) { mostrarToast("<i class='ph ph-check-circle'></i> Tudo já está atualizado!", "#059669"); recarregarDadosSilenciosamente(); }
+                atualizarBotaoSyncManual(); return;
+            }
 
-// =======================================================
-// LÓGICA DO FORMULÁRIO DE ENTREGA DE EPI
-// =======================================================
-function iniciarEntregaRapida(epiNome) {
-    let colabConsulta = document.getElementById('cons-colab').value;
-    abrirTelaEntrega();
+            isSyncing = true;
+            let novaFila = [...fila];
+            let processouAlgo = false;
 
-    document.getElementById('busca-ent-colab').value = colabConsulta;
-    filtrarColab(colabConsulta, 'ent-colab');
-    document.getElementById('ent-colab').value = colabConsulta;
-    preencherDadosColab(); 
-    adicionarItemEPI(epiNome);
-}
+            if(manual) mostrarToast(`<i class='ph ph-arrows-clockwise ph-spin'></i> Sincronizando ${fila.length} pendências...`, "#d97706");
 
-function adicionarItemEPI(epiPreSelecionado = null) {
-    let colabAtual = document.getElementById('ent-colab').value;
-    if(!colabAtual) return Swal.fire("Atenção", "Selecione o Colaborador primeiro!", "warning");
+            for (let i = 0; i < fila.length; i++) {
+                let reqPayload = fila[i];
+                try {
+                    let p = {...reqPayload}; delete p._localId;
+                    let resp = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p), headers: { "Content-Type": "text/plain;charset=utf-8" }});
+                    let resJSON;
+                    try { resJSON = await resp.json(); } catch(e) { continue; }
+                    
+                    if (resJSON.erro) { console.error("Erro:", resJSON.erro); continue; }
+                    if (resJSON.sucesso) {
+                        novaFila = novaFila.filter(item => item._localId !== reqPayload._localId);
+                        localStorage.setItem('rh_fila_requisicoes', JSON.stringify(novaFila));
+                        processouAlgo = true;
+                    }
+                } catch (e) { break; }
+            }
 
-    itemCount++;
-    let div = document.createElement('div'); div.className = "linha-item"; div.id = "item-" + itemCount;
-    let opcoesDinamicas = gerarOpcoesEpiAgrupadas(null);
-    
-    div.innerHTML = `
-        <button class="btn-remover" onclick="removerItemEPI(this)"><i class="ph ph-trash"></i> Remover</button>
-        <span class="info-label" style="color:var(--cor-primaria); font-size:14px;"><i class="ph-fill ph-tag"></i> EPI #${itemCount}</span>
-        <label class="info-label">EPI Entregue:</label><select class="input-campo sel-epi" onchange="aoMudarEpi(this)">${opcoesDinamicas}</select>
-        <div style="display:flex; gap:10px;">
-            <div style="flex:1;"><label class="info-label">Quantidade:</label><input type="number" class="input-campo sel-qtd" value="1" min="1"></div>
-            <div style="flex:2;"><label class="info-label">C.A. (Ex: 12345 ou N/A):</label><input type="text" class="input-campo sel-ca" list="opcoes-ca" placeholder="Nº do C.A."></div>
-        </div>
-        <div style="display:flex; gap:10px;">
-            <div style="flex:1;"><label class="info-label">Duração (Dias):</label><input type="number" class="input-campo sel-duracao" oninput="recalcularTrocaManual(this)" placeholder="Ex: 90" readonly></div>
-            <div style="flex:1;"><label class="info-label">Próxima Troca:</label><input type="text" class="input-campo sel-proxtroca" readonly style="background:#e5e7eb; text-align:center; font-weight:700; color:var(--cor-primaria);" value="---"></div>
-        </div>
-        <label class="info-label">Motivo da Entrega:</label>
-        <select class="input-campo sel-motivo">
-            <option value="">Selecione o motivo...</option><option>1ª Entrega</option><option>Troca por Desgaste</option><option>Perda/Dano</option><option>Extensão do Prazo</option>
-        </select>
-    `;
-    document.getElementById('container-itens-epi').appendChild(div);
-    atualizarTodosDropdownsEpi();
-
-    if(epiPreSelecionado) {
-        let selects = document.querySelectorAll('.sel-epi');
-        let ultimoSelect = selects[selects.length - 1];
-        let optionExists = Array.from(ultimoSelect.options).some(opt => opt.value === epiPreSelecionado);
-        if(optionExists) { ultimoSelect.value = epiPreSelecionado; aoMudarEpi(ultimoSelect); }
-    }
-}
-
-function aoMudarEpi(selectEl) { buscarValidade(selectEl); atualizarTodosDropdownsEpi(); }
-function removerItemEPI(btn) { btn.closest('.linha-item').remove(); atualizarTodosDropdownsEpi(); }
-function recalcularTodasAsValidades() { document.querySelectorAll('.sel-duracao').forEach(input => { if(input.value !== "") recalcularTrocaManual(input); }); }
-
-function buscarValidade(selectEl) {
-    let epi = selectEl.value; let func = document.getElementById('ent-funcao').value;
-    let val = bd.validades.find(v => String(v.epi).trim().toUpperCase() === String(epi).trim().toUpperCase() && String(v.funcao).trim().toUpperCase() === String(func).trim().toUpperCase());
-    let box = selectEl.closest('.linha-item'); let inputDuracao = box.querySelector('.sel-duracao');
-    
-    if(val) { 
-        inputDuracao.value = val.dias; inputDuracao.setAttribute('readonly', 'true'); inputDuracao.style.backgroundColor = "#e5e7eb"; box.querySelector('.sel-qtd').value = val.qtd || 1; recalcularTrocaManual(inputDuracao);
-    } else { 
-        inputDuracao.value = ""; inputDuracao.removeAttribute('readonly'); inputDuracao.style.backgroundColor = "#ffffff"; box.querySelector('.sel-proxtroca').value = "---";
-    }
-}
-
-function recalcularTrocaManual(inputDuracao) {
-    let box = inputDuracao.closest('.linha-item'); let dias = parseInt(inputDuracao.value); let dtInput = document.getElementById('ent-data').value;
-    if(dias > 0 && dtInput) {
-        let d = new Date(dtInput); d.setDate(d.getDate() + dias);
-        let dia = String(d.getDate()).padStart(2, '0'); let mes = String(d.getMonth() + 1).padStart(2, '0'); let ano = d.getFullYear();
-        box.querySelector('.sel-proxtroca').value = `${dia}/${mes}/${ano}`;
-    } else { box.querySelector('.sel-proxtroca').value = "---"; }
-}
-
-// PAD ASSINATURA
-function initPad() {
-    let cvs = document.getElementById('canvas-ass'); 
-    if(!cvs) return;
-    ctx = cvs.getContext('2d');
-    const getP = e => { let r = cvs.getBoundingClientRect(); let x = e.touches ? e.touches[0].clientX : e.clientX; let y = e.touches ? e.touches[0].clientY : e.clientY; return { x: (x - r.left)*(cvs.width/r.width), y: (y - r.top)*(cvs.height/r.height) }; };
-    let s = e => { e.preventDefault(); isDrawing = true; let p = getP(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); cvs.setAttribute('d', '1'); };
-    let m = e => { e.preventDefault(); if(isDrawing){ let p = getP(e); ctx.lineTo(p.x, p.y); ctx.stroke(); }};
-    let f = e => { isDrawing = false; };
-    cvs.onmousedown = s; cvs.ontouchstart = s; cvs.onmousemove = m; cvs.ontouchmove = m; cvs.onmouseup = f; cvs.ontouchend = f;
-}
-function limparPad() { ctx.clearRect(0,0,300,150); document.getElementById('canvas-ass').removeAttribute('d'); }
-
-function processarFoto(input) {
-    if (!input.files[0]) return; 
-    let file = input.files[0];
-    let reader = new FileReader();
-    reader.onload = function(e) {
-        let img = new Image();
-        img.onload = function() {
-            let canvas = document.createElement('canvas');
-            let MAX_WIDTH = 800;
-            let scaleSize = MAX_WIDTH / img.width;
-            canvas.width = MAX_WIDTH; canvas.height = img.height * scaleSize;
-            let ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            b64Foto = canvas.toDataURL('image/jpeg', 0.7);
+            atualizarBotaoSyncManual();
+            
+            if (processouAlgo) {
+                if (novaFila.length === 0) {
+                    mostrarToast("<i class='ph ph-check-circle'></i> Tudo sincronizado com sucesso!", "#059669");
+                } else {
+                    mostrarToast(`<i class='ph ph-warning'></i> Sobraram ${novaFila.length} itens (Sem rede)`, "#dc2626");
+                }
+                recarregarDadosSilenciosamente();
+            }
+            isSyncing = false;
         }
-        img.src = e.target.result;
-    }
-    reader.readAsDataURL(file);
-}
 
-// =======================================================
-// AÇÕES DE SALVAMENTO (COM TRAVA DE DUPLICIDADE)
-// =======================================================
-async function salvarEntrega() {
-    if(isSubmitting) return; // TRAVA DE CLIQUE DUPLO
-
-    let colab = document.getElementById('ent-colab').value; 
-    let dt = document.getElementById('ent-data').value;
-    
-    if(!dt) return Swal.fire("Atenção", "A Data e Hora da entrega é obrigatória!", "warning");
-    if(!colab) return Swal.fire("Atenção", "Selecione o Colaborador na lista!", "warning");
-    
-    let blocosDeItens = document.querySelectorAll('.linha-item');
-    if(blocosDeItens.length === 0) return Swal.fire("Atenção", "Você precisa adicionar pelo menos um EPI à ficha!", "warning");
-    
-    let itens = [];
-    for (let i = 0; i < blocosDeItens.length; i++) {
-        let box = blocosDeItens[i];
-        let epi = box.querySelector('.sel-epi').value; 
-        let qtd = box.querySelector('.sel-qtd').value; 
-        let ca = box.querySelector('.sel-ca').value; 
-        let duracao = box.querySelector('.sel-duracao').value; 
-        let motivo = box.querySelector('.sel-motivo').value;
-        
-        if(!epi || !qtd || !ca || !duracao || !motivo) return Swal.fire("Atenção", `Preencha todos os campos do Item #${i + 1}!`, "warning");
-        itens.push({ epi: epi, qtd: qtd, ca: ca, motivo: motivo, duracao: duracao });
-    }
-    
-    if(!document.getElementById('canvas-ass').getAttribute('d')) return Swal.fire("Atenção", "A Assinatura do Colaborador é obrigatória!", "warning");
-    
-    // Inicia salvamento
-    isSubmitting = true;
-    let btn = document.getElementById('btn-salvar-entrega'); 
-    let originalHtml = btn.innerHTML;
-    btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Preparando... ⏳"; 
-    btn.disabled = true;
-
-    let p = { 
-        acao: "salvar_entrega", 
-        colaborador: colab, data_hora: dt, 
-        matricula: document.getElementById('ent-matricula').value, 
-        admissao: document.getElementById('ent-admissao').value, 
-        funcao: document.getElementById('ent-funcao').value, 
-        setor: document.getElementById('ent-setor').value, 
-        assinatura: document.getElementById('canvas-ass').toDataURL(), 
-        foto: b64Foto, itens: itens 
-    };
-
-    adicionarNaFila(p);
-
-    Swal.fire({
-        title: "Blindado!", 
-        text: "Entrega registrada no celular!\n\nSerá enviada e o PDF gerado em 2º plano automaticamente.", 
-        icon: "success", 
-        confirmButtonColor: "var(--cor-primaria)"
-    });
-    
-    // Retorna pro menu limpando o formulario
-    abrirTelaEntrega(); // Reseta os campos
-    abrirTela('tela-menu'); // Navega pro menu
-    
-    btn.innerHTML = originalHtml; 
-    btn.disabled = false;
-    isSubmitting = false; // Libera a trava
-}
-
-async function salvarNovoColab() {
-    if(isSubmitting) return;
-
-    let funcSelect = document.getElementById('cad-func-select').value;
-    let funcaoFinal = (funcSelect === 'NOVO') ? document.getElementById('cad-func-novo').value : funcSelect;
-
-    let p = { 
-        acao: "cadastrar_colaborador", 
-        matricula: document.getElementById('cad-mat').value, 
-        nome: document.getElementById('cad-nome').value.toUpperCase(), 
-        funcao: funcaoFinal, 
-        setor: document.getElementById('cad-setor').value, 
-        admissao: document.getElementById('cad-adm').value 
-    };
-    if(!p.nome || !p.setor || !p.funcao || !p.admissao) return Swal.fire("Atenção", "Nome, Setor, Função e Data são obrigatórios!", "warning");
-    
-    isSubmitting = true;
-    let btn = document.getElementById('btn-salvar-colab');
-    let originalHtml = btn.innerHTML;
-    btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Salvando..."; btn.disabled = true;
-
-    adicionarNaFila(p);
-
-    bd.colaboradores.push({
-        nome: p.nome, matricula: p.matricula, funcao: p.funcao, setor: p.setor,
-        admissao: p.admissao.split('-').reverse().join('/'), ativo: true
-    });
-    localStorage.setItem('lince_bd', JSON.stringify(bd));
-    
-    document.getElementById('cad-mat').value = ""; document.getElementById('cad-nome').value = ""; document.getElementById('cad-adm').value = "";
-    
-    Swal.fire({title: "Sucesso", text: "Colaborador adicionado e pronto para receber EPIs!", icon: "success", confirmButtonColor: "var(--cor-primaria)"});
-    abrirTela('tela-menu');
-    
-    btn.innerHTML = originalHtml; btn.disabled = false;
-    isSubmitting = false;
-}
-
-async function salvarEntrada() {
-    if(isSubmitting) return;
-
-    let p = { acao: "salvar_entrada_estoque", epi: document.getElementById('est-epi').value, qtd: document.getElementById('est-qtd').value, nf: document.getElementById('est-nf').value };
-    if(!p.epi || !p.qtd) return Swal.fire("Atenção", "Selecione o EPI e digite a Quantidade Comprada!", "warning");
-    
-    isSubmitting = true;
-    let btn = document.getElementById('btn-salvar-entrada');
-    let originalHtml = btn.innerHTML;
-    btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Registrando..."; btn.disabled = true;
-
-    adicionarNaFila(p);
-
-    let item = bd.estoque.find(x => x.epi === p.epi);
-    if(item) {
-        item.entradas = parseInt(item.entradas) + parseInt(p.qtd);
-        item.saldo = parseInt(item.saldo) + parseInt(p.qtd);
-        localStorage.setItem('lince_bd', JSON.stringify(bd));
-    }
-
-    document.getElementById('est-epi').value = ''; document.getElementById('est-qtd').value = ''; document.getElementById('est-nf').value = '';
-
-    Swal.fire({title: "Estoque Atualizado!", text: "A compra foi lançada no sistema.", icon: "success", confirmButtonColor: "var(--cor-primaria)"});
-    abrirTela('tela-menu');
-
-    btn.innerHTML = originalHtml; btn.disabled = false;
-    isSubmitting = false;
-}
-
-// =======================================================
-// TELA DE CONSULTA DE HISTÓRICO E DEMISSÕES
-// =======================================================
-function carregarFichaColab() {
-    let colabNome = String(document.getElementById('cons-colab').value).trim().toUpperCase().replace(/\s+/g, ' '); 
-    
-    if(!colabNome) { 
-        document.getElementById('resultado-ficha').innerHTML = ""; 
-        document.getElementById('cracha-ativo').style.display = 'none';
-        document.getElementById('cracha-demitido').style.display = 'none';
-        document.getElementById('box-demissao').style.display = 'none';
-        document.getElementById('btn-gerar-pdf-ficha').style.display = 'none'; 
-        return; 
-    }
-
-    let colabObj = bd.colaboradores.find(c => c.nome.toUpperCase() === colabNome);
-    let funcao = colabObj ? colabObj.funcao : "";
-
-    if(colabObj) {
-        document.getElementById('btn-gerar-pdf-ficha').style.display = 'block'; 
-        
-        if(colabObj.ativo) {
-            document.getElementById('cracha-ativo').style.display = 'block';
-            document.getElementById('cracha-demitido').style.display = 'none';
-            document.getElementById('cracha-adm1').innerText = colabObj.admissao;
-            document.getElementById('box-demissao').style.display = 'block'; 
-            document.getElementById('input-demissao').value = "";
-            document.getElementById('area-recontratar').style.display = 'none';
-        } else {
-            document.getElementById('cracha-ativo').style.display = 'none';
-            document.getElementById('cracha-demitido').style.display = 'block';
-            document.getElementById('cracha-adm2').innerText = colabObj.admissao;
-            document.getElementById('cracha-dem').innerText = colabObj.demissao;
-            document.getElementById('box-demissao').style.display = 'block'; 
-            document.getElementById('input-demissao').value = colabObj.isoDemissao;
-            document.getElementById('area-recontratar').style.display = 'block';
+        async function forcarSincronizacaoManual() {
+            let btn = document.getElementById('btn-sync-manual');
+            if(!btn) return;
+            let originalHtml = btn.innerHTML;
+            btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Sincronizando...";
+            btn.disabled = true;
+            await sincronizarSegundoPlano(true);
+            btn.disabled = false;
+            atualizarBotaoSyncManual();
         }
-    }
 
-    let validadesDaFuncao = bd.validades.filter(v => v.funcao.toUpperCase() === funcao.toUpperCase());
-    let exibicao = {};
+        setInterval(() => sincronizarSegundoPlano(false), 30000); 
+        document.addEventListener("visibilitychange", function() { if (document.visibilityState === 'visible') sincronizarSegundoPlano(false); });
 
-    validadesDaFuncao.forEach(v => {
-        let baseName = getBaseEpiName(v.epi.toUpperCase());
-        if(!exibicao[baseName]) { exibicao[baseName] = { id_item: null, epiBase: baseName, epi: baseName + " (Definir Tamanho)", data: '---', data_iso: '', qtd: '---', ca: '---', duracao_bruta: '', motivo: '', prox_troca: '---', status: 'NÃO ENTREGUE' }; }
-    });
+        // =======================================================
+        // CARREGAMENTO E LOGIN
+        // =======================================================
+        async function recarregarDadosSilenciosamente() {
+            try {
+                let fila = JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || [];
+                if(fila.length > 0) return; 
 
-    let historico = bd.fichas[colabNome] || [];
-    historico.forEach(h => {
-        let nomeReal = String(h.epi).toUpperCase(); let baseName = getBaseEpiName(nomeReal);
-        exibicao[baseName] = { id_item: h.id_item, epiBase: baseName, epi: h.epi, data: h.data, data_iso: h.data_iso, qtd: h.qtd, ca: h.ca, duracao_bruta: h.duracao_bruta, motivo: h.motivo, prox_troca: h.prox_troca, status: h.status };
-    });
-
-    let html = "<table><tr><th>EPI</th><th>Última Data</th><th>C.A.</th><th>Troca</th><th>Status</th><th>Ações Rápidas</th></tr>";
-    
-    Object.values(exibicao).forEach(info => {
-        let cl = "";
-        if(info.status === "Vencido") cl = "status-vencido"; else if(info.status === "Válido") cl = "status-valido"; else cl = "status-neutro";
-
-        let termoBusca = (info.status === 'NÃO ENTREGUE') ? '' : info.epi; 
-        let acoes = `<div style="display:flex; justify-content:center; align-items:center; flex-direction:column; gap: 5px;">`;
-        
-        if(colabObj && colabObj.ativo) {
-            acoes += `<button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')"><i class="ph ph-hand-pointing"></i> Entregar</button>`;
+                let r2 = await fetch(`${API_URL}?acao=buscar_inicial`);
+                let d2 = await r2.json();
+                if(d2.sucesso) {
+                    bd = d2;
+                    localStorage.setItem('lince_bd', JSON.stringify(bd));
+                    popularListas();
+                    if(document.getElementById('tela-consulta').style.display === 'block') { carregarFichaColab(); } 
+                    verificarVencidosGlobais();
+                }
+            } catch(e) {}
         }
-        
-        if(info.id_item) {
-            acoes += `<button class="btn-editar" onclick="abrirModalEdicao('${info.id_item}', '${info.epi}', '${info.ca}', '${info.qtd}', '${info.duracao_bruta}', '${info.motivo}', '${info.data_iso}')" title="Editar Registro"><i class="ph-fill ph-pencil-simple"></i> Edit</button>`;
+
+        window.onload = function() {
+            let bdSalvo = localStorage.getItem('lince_bd');
+            if(bdSalvo) { try { bd = JSON.parse(bdSalvo); popularListas(); } catch(e) {} }
+
+            atualizarBotaoSyncManual();
+
+            let userSalvo = localStorage.getItem('lince_user');
+            if(userSalvo) {
+                let userObj = JSON.parse(userSalvo);
+                window.usuarioLogado = userObj.u;
+                abrirTela('tela-menu');
+                initPad();
+                if(bdSalvo) verificarVencidosGlobais();
+                recarregarDadosSilenciosamente();
+            }
+        };
+
+        function sairDoSistema() {
+            localStorage.removeItem('lince_user');
+            location.reload();
         }
-        acoes += `</div>`;
-        html += `<tr><td style="text-align:left;"><b>${info.epi}</b></td><td>${info.data}</td><td>${info.ca}</td><td>${info.prox_troca}</td><td><span class="${cl}">${info.status}</span></td><td>${acoes}</td></tr>`;
-    });
-    document.getElementById('resultado-ficha').innerHTML = html + "</table>";
-}
 
-async function salvarDemissao() {
-    if(isSubmitting) return;
+        async function fazerLogin() {
+            let u = document.getElementById('campo-usuario').value; let s = document.getElementById('campo-senha').value;
+            if(!u || !s) return Swal.fire("Atenção", "Preencha Usuário e Senha para continuar!", "warning");
+            
+            let btn = document.getElementById('btn-login');
+            btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Sincronizando... ⏳"; 
+            btn.disabled = true;
+            
+            try {
+                let r = await fetch(`${API_URL}?acao=login&usuario=${u}&senha=${s}`); 
+                let d = await r.json();
+                
+                if(d.sucesso){
+                    window.usuarioLogado = u; 
+                    bd = d.bd; 
+                    localStorage.setItem('lince_user', JSON.stringify({u: u, s: s}));
+                    localStorage.setItem('lince_bd', JSON.stringify(bd));
+                    
+                    popularListas(); 
+                    abrirTela('tela-menu'); 
+                    initPad();
+                    verificarVencidosGlobais();
+                } else { Swal.fire("Acesso Negado", d.erro || "Usuário ou Senha incorretos!", "error"); }
+            } catch(e) { Swal.fire("Erro de Rede", "Verifique o link do Apps Script ou sua conexão de internet.", "error"); }
+            
+            btn.innerHTML = "<i class='ph ph-sign-in'></i> Acessar Sistema";
+            btn.disabled = false;
+        }
 
-    let colabNome = document.getElementById('cons-colab').value;
-    let dtDemissao = document.getElementById('input-demissao').value;
-    
-    const { isConfirmed } = await Swal.fire({title: 'Desligamento', text: `Atualizar a data de desligamento de ${colabNome}?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Sim, Demitir'});
-    if(!isConfirmed) return;
-    
-    isSubmitting = true;
-    let p = { acao: "salvar_demissao", nome: colabNome, data_demissao: dtDemissao };
-    adicionarNaFila(p);
+        // =======================================================
+        // UTILITÁRIOS E NAVEGAÇÃO
+        // =======================================================
+        function abrirTela(id) { 
+            document.querySelectorAll('.app-container').forEach(t => t.style.display = 'none'); 
+            document.getElementById(id).style.display = 'block'; 
+        }
 
-    let c = bd.colaboradores.find(x => x.nome === colabNome);
-    if(c) {
-        c.ativo = false; c.isoDemissao = dtDemissao; c.demissao = dtDemissao.split('-').reverse().join('/');
-        localStorage.setItem('lince_bd', JSON.stringify(bd));
-        carregarFichaColab();
-    }
+        function abrirTelaEntrega() {
+            abrirTela('tela-entrega');
+            let n = new Date(); let hL = new Date(n.getTime() - (n.getTimezoneOffset() * 60000)).toISOString().slice(0,16);
+            document.getElementById('ent-data').value = hL;
+            document.getElementById('container-itens-epi').innerHTML = ""; 
+            itemCount = 0;
+            document.getElementById('ent-colab').value = "";
+            document.getElementById('ent-funcao').value = "";
+            limparPad();
+        }
 
-    Swal.fire("Desligado", "Status atualizado localmente!", "success");
-    document.getElementById('input-demissao').value = "";
-    isSubmitting = false;
-}
+        function limitarTexto(texto, tamanhoMax) {
+            if (texto.length <= tamanhoMax) return texto;
+            return texto.substring(0, tamanhoMax - 3) + "...";
+        }
 
-async function recontratarColaborador() {
-    if(isSubmitting) return;
+        function getBaseEpiName(epiName) { return String(epiName).replace(/\s*\([^)]+\)$/, '').trim(); }
 
-    let colabNome = document.getElementById('cons-colab').value;
-    let novaAdm = document.getElementById('input-nova-admissao').value;
-    
-    if(!novaAdm) return Swal.fire("Atenção", "Insira a data da nova admissão para recontratar!", "warning");
-    
-    const { isConfirmed } = await Swal.fire({title: 'Recontratar', text: `Deseja realmente reativar ${colabNome}?\nA data de demissão antiga será apagada.`, icon: 'question', showCancelButton: true, confirmButtonColor: '#059669', confirmButtonText: 'Sim, Reativar'});
-    if(!isConfirmed) return;
-    
-    isSubmitting = true;
-    let p = { acao: "recontratar_colaborador", nome: colabNome, nova_admissao: novaAdm };
-    adicionarNaFila(p);
-    
-    let c = bd.colaboradores.find(x => x.nome === colabNome);
-    if(c) {
-        c.ativo = true; c.admissao = novaAdm.split('-').reverse().join('/'); c.demissao = "";
-        localStorage.setItem('lince_bd', JSON.stringify(bd));
-        carregarFichaColab();
-    }
+        // =======================================================
+        // RENDERIZAÇÃO DE LISTAS E ESTOQUE
+        // =======================================================
+        function popularListas() {
+            filtrarColab('', 'ent-colab');
+            filtrarColab('', 'cons-colab');
+            
+            let optEPI = '<option value="">Selecione o EPI...</option>';
+            bd.epis.sort().forEach(e => optEPI += `<option value="${e}">${e}</option>`);
+            document.getElementById('est-epi').innerHTML = optEPI;
 
-    Swal.fire("Reativado", "Colaborador pronto para uso novamente!", "success");
-    document.getElementById('input-nova-admissao').value = '';
-    isSubmitting = false;
-}
+            let funcoesSet = new Set();
+            bd.colaboradores.forEach(c => { if(c.funcao) funcoesSet.add(c.funcao.toUpperCase()); });
+            bd.validades.forEach(v => { if(v.funcao) funcoesSet.add(v.funcao.toUpperCase()); });
+            
+            let optFuncoes = '<option value="">Selecione a função...</option>';
+            Array.from(funcoesSet).sort().forEach(f => optFuncoes += `<option value="${f}">${f}</option>`);
+            optFuncoes += '<option value="NOVO">+ CADASTRAR NOVA FUNÇÃO</option>';
+            document.getElementById('cad-func-select').innerHTML = optFuncoes;
 
-// =======================================================
-// EDIÇÕES E PDFS
-// =======================================================
-function abrirModalEstoque(epi, ent, sai) {
-    document.getElementById('adj-epi-nome').innerText = epi;
-    document.getElementById('adj-epi-hidden').value = epi;
-    document.getElementById('adj-ent-atual').value = ent;
-    document.getElementById('adj-sai-atual').value = sai;
-    document.getElementById('adj-ent-nova').value = ent;
-    document.getElementById('adj-sai-nova').value = sai;
-    recalcularSaldoEstoque();
-    document.getElementById('modal-estoque').style.display = 'flex';
-}
+            let htmlEst = "<table><tr><th>EPI</th><th>ENTRADA</th><th>SAÍDA</th><th>SALDO FINAL</th><th>AÇÕES</th></tr>";
+            bd.estoque.forEach(e => { 
+                htmlEst += `<tr>
+                    <td style="text-align:left;"><b>${e.epi}</b></td>
+                    <td>${e.entradas}</td>
+                    <td>${e.saidas}</td>
+                    <td style="color:#1a4d2e; font-size:13px;"><b>${e.saldo}</b></td>
+                    <td><button class="btn-editar" onclick="abrirModalEstoque('${e.epi}', ${e.entradas}, ${e.saidas})" style="margin:0;"><i class="ph-fill ph-pencil-simple"></i></button></td>
+                </tr>`; 
+            });
+            document.getElementById('tabela-estoque').innerHTML = htmlEst + "</table>";
+        }
 
-function recalcularSaldoEstoque() {
-    let e = parseFloat(document.getElementById('adj-ent-nova').value) || 0;
-    let s = parseFloat(document.getElementById('adj-sai-nova').value) || 0;
-    document.getElementById('adj-saldo-novo').value = e - s;
-}
-
-async function salvarAjusteEstoque() {
-    if(isSubmitting) return;
-
-    let epi = document.getElementById('adj-epi-hidden').value;
-    let entAtual = parseFloat(document.getElementById('adj-ent-atual').value) || 0;
-    let saiAtual = parseFloat(document.getElementById('adj-sai-atual').value) || 0;
-    let entNova = parseFloat(document.getElementById('adj-ent-nova').value) || 0;
-    let saiNova = parseFloat(document.getElementById('adj-sai-nova').value) || 0;
-
-    let diffEnt = entNova - entAtual;
-    let diffSai = saiNova - saiAtual;
-
-    if(diffEnt === 0 && diffSai === 0) return Swal.fire("Atenção", "Nenhuma alteração foi detectada.", "info");
-    
-    const { isConfirmed } = await Swal.fire({title: 'Ajuste de Estoque', text: `Confirma o ajuste manual do estoque para ${epi}?`, icon: 'question', showCancelButton: true, confirmButtonColor: 'var(--cor-primaria)'});
-    if(!isConfirmed) return;
-
-    isSubmitting = true;
-    let btn = document.getElementById('btn-salvar-estoque');
-    let originalHtml = btn.innerHTML;
-    btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Salvando... ⏳"; btn.disabled = true;
-
-    let p = { acao: "ajustar_estoque", epi: epi, diff_entrada: diffEnt, diff_saida: diffSai };
-    adicionarNaFila(p);
-
-    let item = bd.estoque.find(x => x.epi === epi);
-    if(item) {
-        item.entradas = entNova; item.saidas = saiNova; item.saldo = entNova - saiNova;
-        localStorage.setItem('lince_bd', JSON.stringify(bd));
-        popularListas();
-    }
-
-    document.getElementById('modal-estoque').style.display = 'none';
-    btn.innerHTML = originalHtml; btn.disabled = false;
-    Swal.fire("Sucesso", "Ajuste salvo localmente!", "success");
-    isSubmitting = false;
-}
-
-function abrirModalEdicao(id, epiNome, ca, qtd, duracao, motivo, dataIso) {
-    document.getElementById('edit-id').value = id; document.getElementById('edit-nome-epi').innerText = epiNome; document.getElementById('edit-ca').value = ca; document.getElementById('edit-qtd').value = qtd; document.getElementById('edit-duracao').value = duracao; document.getElementById('edit-motivo').value = motivo; document.getElementById('edit-data').value = dataIso;
-    document.getElementById('modal-edicao').style.display = 'flex';
-}
-function fecharModalEdicao() { document.getElementById('modal-edicao').style.display = 'none'; }
-
-async function salvarEdicaoItem() {
-    if(isSubmitting) return;
-
-    let id = document.getElementById('edit-id').value; let ca = document.getElementById('edit-ca').value; let qtd = document.getElementById('edit-qtd').value; let duracao = document.getElementById('edit-duracao').value; let motivo = document.getElementById('edit-motivo').value; let dataHora = document.getElementById('edit-data').value;
-    if(!qtd || qtd <= 0 || !ca || !duracao || duracao <= 0 || !dataHora) return Swal.fire("Atenção", "Preencha todos os campos do EPI corretamente para salvar a edição!", "warning");
-    
-    const { isConfirmed } = await Swal.fire({title: 'Substituição Crítica', text: "Tem certeza que deseja alterar este registro? O PDF da ficha do Colaborador será sobrescrito e atualizado no Drive.", icon: 'warning', showCancelButton: true, confirmButtonColor: '#d97706'});
-    if(!isConfirmed) return;
-
-    isSubmitting = true;
-    let btn = document.getElementById('btn-salvar-edicao'); 
-    let originalHtml = btn.innerHTML;
-    btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Preparando... ⏳"; btn.disabled = true;
-
-    let p = { acao: "editar_item", id_item: id, ca: ca, qtd: qtd, duracao: duracao, motivo: motivo, data_hora: dataHora };
-    adicionarNaFila(p);
-
-    fecharModalEdicao(); 
-    abrirTela('tela-menu');
-    
-    btn.innerHTML = originalHtml; btn.disabled = false;
-    Swal.fire("Editado", "A edição foi registrada e o novo PDF será gerado em breve.", "success");
-    isSubmitting = false;
-}
-
-// =======================================================
-// GERAÇÃO DE PDF E ALERTA WHATSAPP
-// =======================================================
-function verificarVencidosGlobais() {
-    window.listaGlobaisVencidos = [];
-    bd.colaboradores.forEach(c => {
-        if(!c.ativo) return; 
-        let f = bd.fichas[c.nome];
-        if(f) {
-            let episArray = {};
-            f.forEach(item => { episArray[getBaseEpiName(item.epi)] = item; });
-            Object.values(episArray).forEach(item => {
-                if(item.status === 'Vencido') { 
-                    window.listaGlobaisVencidos.push({ colab: c.nome, setor: c.setor, epi: item.epi, data: item.prox_troca }); 
+        function filtrarColab(texto, selectId) {
+            let select = document.getElementById(selectId);
+            let options = '<option value="">Selecione o Colaborador...</option>';
+            bd.colaboradores.sort((a,b) => a.nome.localeCompare(b.nome)).forEach(c => {
+                if(selectId === 'ent-colab' && !c.ativo) return; 
+                if(c.nome.toLowerCase().includes(texto.toLowerCase())) { 
+                    let tag = c.ativo ? '' : ' [OFF]';
+                    let textoCompleto = `${c.nome} - ${c.funcao}${tag}`;
+                    let textoCurto = limitarTexto(textoCompleto, 36); 
+                    options += `<option value="${c.nome}">${textoCurto}</option>`; 
                 }
             });
+            select.innerHTML = options;
+            if(selectId === 'ent-colab') preencherDadosColab();
+            if(selectId === 'cons-colab') carregarFichaColab();
         }
-    });
-    if(window.listaGlobaisVencidos.length > 0) {
-        document.getElementById('qtd-vencidos').innerText = window.listaGlobaisVencidos.length;
-        document.getElementById('modal-vencidos').style.display = 'flex';
-    }
-}
 
-function enviarWhatsappGestor() {
-    let setorFiltro = document.getElementById('modal-setor-whatsapp').value;
-    let msg = "*🚨 RELATÓRIO DE EPIs VENCIDOS*\n\n";
-    let agrupado = {};
-    let encontrou = false;
-    
-    window.listaGlobaisVencidos.forEach(v => {
-        let setorNormalizado = v.setor ? v.setor.toUpperCase() : "OUTROS";
-        if (setorFiltro === "TODOS" || setorFiltro === setorNormalizado || (setorFiltro === "ADM" && setorNormalizado === "ADMINISTRATIVO")) {
-            if(!agrupado[v.colab]) agrupado[v.colab] = [];
-            agrupado[v.colab].push(v);
-            encontrou = true;
+        function preencherDadosColab() {
+            let nome = document.getElementById('ent-colab').value;
+            let c = bd.colaboradores.find(x => x.nome === nome);
+            
+            if(c){ 
+                document.getElementById('ent-funcao').value = c.funcao; 
+                document.getElementById('ent-setor').value = c.setor; 
+                document.getElementById('ent-admissao').value = c.admissao; 
+                document.getElementById('ent-matricula').value = c.matricula; 
+            } else { 
+                document.getElementById('ent-funcao').value = ""; 
+            }
+            
+            window.statusEpiAtual = {};
+            let cNome = String(nome).trim().toUpperCase().replace(/\s+/g, ' ');
+            let f = bd.fichas[cNome];
+            if(f) { f.forEach(item => { window.statusEpiAtual[String(item.epi).trim().toUpperCase()] = item.prox_troca; }); }
+            
+            // Reseta os itens sempre que mudar o colaborador
+            document.getElementById('container-itens-epi').innerHTML = "";
+            itemCount = 0;
         }
-    });
-    
-    if(!encontrou) return Swal.fire("Aviso", "Nenhum EPI vencido para o setor selecionado.", "info");
 
-    Object.keys(agrupado).forEach(colab => {
-        msg += `👷 *${colab}*\n`;
-        agrupado[colab].forEach(epi => { msg += ` - ${epi.epi} (Venceu: ${epi.data})\n`; });
-        msg += `\n`;
-    });
-    
-    msg += "Acesse o sistema RH Lince para realizar as trocas.";
-    window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
-}
+        function getEpiBadge(epiName) {
+            let epiKey = String(epiName).trim().toUpperCase();
+            let proxTrocaStr = window.statusEpiAtual[epiKey];
 
-async function gerarRelatorioEstoque() {
-    if (!navigator.onLine) return Swal.fire("Offline", "Você precisa estar conectado à internet para gerar o PDF do Estoque!", "error");
-    let btn = document.getElementById('btn-pdf-estoque'); 
-    let originalHtml = btn.innerHTML;
-    btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Gerando PDF... ⏳"; btn.disabled = true;
-    try {
-        let r = await fetch(API_URL, { method: 'POST', redirect: 'follow', headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({acao: "gerar_pdf_estoque"}) }); 
-        let d = await r.json();
-        if(d.sucesso) { window.open(d.pdf, '_blank'); } else { Swal.fire("Erro", d.erro, "error"); }
-    } catch(e) { Swal.fire("Erro de Rede", e.message, "error"); }
-    btn.innerHTML = originalHtml; btn.disabled = false;
-}
+            if (!proxTrocaStr) return "⚪ NOVO"; 
+            if (proxTrocaStr === "---" || proxTrocaStr === "N/A") return "🟢 S/ VAL."; 
 
-async function solicitarPdfColaborador() {
-    if (!navigator.onLine) return Swal.fire("Offline", "Você precisa estar conectado à internet para gerar o PDF da Ficha Completa!", "error");
-    
-    let colabNome = document.getElementById('cons-colab').value;
-    if(!colabNome) return;
-    
-    let colabObj = bd.colaboradores.find(c => c.nome.toUpperCase() === colabNome.toUpperCase());
-    if(!colabObj) return;
+            let p = proxTrocaStr.split('/');
+            if(p.length === 3) {
+                let dTroca = new Date(p[2], p[1]-1, p[0]).getTime();
+                let hj = new Date(); hj.setHours(0,0,0,0);
+                let diffDias = Math.ceil((dTroca - hj.getTime()) / (1000 * 3600 * 24));
 
-    let btn = document.getElementById('btn-gerar-pdf-ficha');
-    let originalHtml = btn.innerHTML;
-    btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Gerando Ficha Completa... ⏳"; 
-    btn.disabled = true;
+                if (diffDias < 0) return `🔴 VENCIDO (${Math.abs(diffDias)}d)`; 
+                if (diffDias <= 15) return `🟡 VENCE EM ${diffDias}d`; 
+                return `🟢 VÁLIDO (${diffDias}d)`; 
+            }
+            return "⚪ DESC.";
+        }
 
-    let p = { acao: "gerar_pdf_colaborador", colab: colabObj.nome, matricula: colabObj.matricula, admissao: colabObj.admissao, funcao: colabObj.funcao, setor: colabObj.setor };
+        function gerarOpcoesEpiAgrupadas(selectAtual) {
+            let funcAtual = document.getElementById('ent-funcao').value;
+            if (!funcAtual) return '<option value="">Selecione o Colaborador primeiro...</option>';
 
-    try {
-        let response = await fetch(API_URL, { method: 'POST', redirect: 'follow', headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(p) });
-        let textResult = await response.text();
-        let resJSON;
-        
-        try {
-            resJSON = JSON.parse(textResult);
-        } catch (parseError) {
-            Swal.fire({title: "Arquivo Gigante!", text: "O PDF foi gerado e salvo na pasta do Drive!\n\nComo o histórico do colaborador é muito grande, o arquivo já está disponível na nuvem.", icon: "success", confirmButtonColor: "var(--cor-primaria)"});
+            let episSelecionados = [];
+            document.querySelectorAll('.sel-epi').forEach(sel => {
+                if(sel !== selectAtual && sel.value) episSelecionados.push(String(sel.value).trim().toUpperCase());
+            });
+
+            let episDaFuncao = bd.validades.filter(v => String(v.funcao).trim().toUpperCase() === String(funcAtual).trim().toUpperCase());
+            let nomesEpisDaFuncao = episDaFuncao.map(v => String(v.epi).trim().toUpperCase());
+
+            let optFuncao = '<optgroup label="OBRIGATÓRIOS DA FUNÇÃO">';
+            let optOutros = '<optgroup label="OUTROS EPIs (Avulsos)">';
+
+            bd.epis.sort().forEach(e => {
+                let eUpper = String(e).trim().toUpperCase();
+                let status = getEpiBadge(e);
+                let isSelected = episSelecionados.includes(eUpper);
+                let checkmark = isSelected ? "✅ " : ""; 
+                let disabledAttr = isSelected ? "disabled" : "";
+                let textoCurto = limitarTexto(`${checkmark}${e} [${status}]`, 36);
+
+                if (nomesEpisDaFuncao.includes(eUpper)) { 
+                    optFuncao += `<option value="${e}" ${disabledAttr}>${textoCurto}</option>`; 
+                } else { 
+                    optOutros += `<option value="${e}" ${disabledAttr}>${textoCurto}</option>`; 
+                }
+            });
+
+            optFuncao += '</optgroup>'; optOutros += '</optgroup>';
+            return '<option value="">Selecione o EPI entregue...</option>' + optFuncao + optOutros;
+        }
+
+        function atualizarTodosDropdownsEpi() {
+            document.querySelectorAll('.sel-epi').forEach(sel => {
+                let valorAtual = sel.value; 
+                sel.innerHTML = gerarOpcoesEpiAgrupadas(sel);
+                sel.value = valorAtual; 
+            });
+        }
+
+        // =======================================================
+        // LÓGICA DO FORMULÁRIO DE ENTREGA DE EPI
+        // =======================================================
+        function iniciarEntregaRapida(epiNome) {
+            let colabConsulta = document.getElementById('cons-colab').value;
+            abrirTelaEntrega();
+
+            document.getElementById('busca-ent-colab').value = colabConsulta;
+            filtrarColab(colabConsulta, 'ent-colab');
+            document.getElementById('ent-colab').value = colabConsulta;
+            preencherDadosColab(); 
+            adicionarItemEPI(epiNome);
+        }
+
+        function adicionarItemEPI(epiPreSelecionado = null) {
+            let colabAtual = document.getElementById('ent-colab').value;
+            if(!colabAtual) return Swal.fire("Atenção", "Selecione o Colaborador primeiro!", "warning");
+
+            itemCount++;
+            let div = document.createElement('div'); div.className = "linha-item"; div.id = "item-" + itemCount;
+            let opcoesDinamicas = gerarOpcoesEpiAgrupadas(null);
+            
+            div.innerHTML = `
+                <button class="btn-remover" onclick="removerItemEPI(this)"><i class="ph ph-trash"></i> Remover</button>
+                <span class="info-label" style="color:var(--cor-primaria); font-size:14px;"><i class="ph-fill ph-tag"></i> EPI #${itemCount}</span>
+                <label class="info-label">EPI Entregue:</label><select class="input-campo sel-epi" onchange="aoMudarEpi(this)">${opcoesDinamicas}</select>
+                <div style="display:flex; gap:10px;">
+                    <div style="flex:1;"><label class="info-label">Quantidade:</label><input type="number" class="input-campo sel-qtd" value="1" min="1"></div>
+                    <div style="flex:2;"><label class="info-label">C.A. (Ex: 12345 ou N/A):</label><input type="text" class="input-campo sel-ca" list="opcoes-ca" placeholder="Nº do C.A."></div>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <div style="flex:1;"><label class="info-label">Duração (Dias):</label><input type="number" class="input-campo sel-duracao" oninput="recalcularTrocaManual(this)" placeholder="Ex: 90" readonly></div>
+                    <div style="flex:1;"><label class="info-label">Próxima Troca:</label><input type="text" class="input-campo sel-proxtroca" readonly style="background:#e5e7eb; text-align:center; font-weight:700; color:var(--cor-primaria);" value="---"></div>
+                </div>
+                <label class="info-label">Motivo da Entrega:</label>
+                <select class="input-campo sel-motivo">
+                    <option value="">Selecione o motivo...</option><option>1ª Entrega</option><option>Troca por Desgaste</option><option>Perda/Dano</option><option>Extensão do Prazo</option>
+                </select>
+            `;
+            document.getElementById('container-itens-epi').appendChild(div);
+            atualizarTodosDropdownsEpi();
+
+            if(epiPreSelecionado) {
+                let selects = document.querySelectorAll('.sel-epi');
+                let ultimoSelect = selects[selects.length - 1];
+                let optionExists = Array.from(ultimoSelect.options).some(opt => opt.value === epiPreSelecionado);
+                if(optionExists) { ultimoSelect.value = epiPreSelecionado; aoMudarEpi(ultimoSelect); }
+            }
+        }
+
+        function aoMudarEpi(selectEl) { buscarValidade(selectEl); atualizarTodosDropdownsEpi(); }
+        function removerItemEPI(btn) { btn.closest('.linha-item').remove(); atualizarTodosDropdownsEpi(); }
+        function recalcularTodasAsValidades() { document.querySelectorAll('.sel-duracao').forEach(input => { if(input.value !== "") recalcularTrocaManual(input); }); }
+
+        function buscarValidade(selectEl) {
+            let epi = selectEl.value; let func = document.getElementById('ent-funcao').value;
+            let val = bd.validades.find(v => String(v.epi).trim().toUpperCase() === String(epi).trim().toUpperCase() && String(v.funcao).trim().toUpperCase() === String(func).trim().toUpperCase());
+            let box = selectEl.closest('.linha-item'); let inputDuracao = box.querySelector('.sel-duracao');
+            
+            if(val) { 
+                inputDuracao.value = val.dias; inputDuracao.setAttribute('readonly', 'true'); inputDuracao.style.backgroundColor = "#e5e7eb"; box.querySelector('.sel-qtd').value = val.qtd || 1; recalcularTrocaManual(inputDuracao);
+            } else { 
+                inputDuracao.value = ""; inputDuracao.removeAttribute('readonly'); inputDuracao.style.backgroundColor = "#ffffff"; box.querySelector('.sel-proxtroca').value = "---";
+            }
+        }
+
+        function recalcularTrocaManual(inputDuracao) {
+            let box = inputDuracao.closest('.linha-item'); let dias = parseInt(inputDuracao.value); let dtInput = document.getElementById('ent-data').value;
+            if(dias > 0 && dtInput) {
+                let d = new Date(dtInput); d.setDate(d.getDate() + dias);
+                let dia = String(d.getDate()).padStart(2, '0'); let mes = String(d.getMonth() + 1).padStart(2, '0'); let ano = d.getFullYear();
+                box.querySelector('.sel-proxtroca').value = `${dia}/${mes}/${ano}`;
+            } else { box.querySelector('.sel-proxtroca').value = "---"; }
+        }
+
+        // PAD ASSINATURA
+        function initPad() {
+            let cvs = document.getElementById('canvas-ass'); 
+            if(!cvs) return;
+            ctx = cvs.getContext('2d');
+            const getP = e => { let r = cvs.getBoundingClientRect(); let x = e.touches ? e.touches[0].clientX : e.clientX; let y = e.touches ? e.touches[0].clientY : e.clientY; return { x: (x - r.left)*(cvs.width/r.width), y: (y - r.top)*(cvs.height/r.height) }; };
+            let s = e => { e.preventDefault(); isDrawing = true; let p = getP(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); cvs.setAttribute('d', '1'); };
+            let m = e => { e.preventDefault(); if(isDrawing){ let p = getP(e); ctx.lineTo(p.x, p.y); ctx.stroke(); }};
+            let f = e => { isDrawing = false; };
+            cvs.onmousedown = s; cvs.ontouchstart = s; cvs.onmousemove = m; cvs.ontouchmove = m; cvs.onmouseup = f; cvs.ontouchend = f;
+        }
+        function limparPad() { ctx.clearRect(0,0,300,150); document.getElementById('canvas-ass').removeAttribute('d'); }
+
+        function processarFoto(input) {
+            if (!input.files[0]) return; 
+            let file = input.files[0];
+            let reader = new FileReader();
+            reader.onload = function(e) {
+                let img = new Image();
+                img.onload = function() {
+                    let canvas = document.createElement('canvas');
+                    let MAX_WIDTH = 800;
+                    let scaleSize = MAX_WIDTH / img.width;
+                    canvas.width = MAX_WIDTH; canvas.height = img.height * scaleSize;
+                    let ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    b64Foto = canvas.toDataURL('image/jpeg', 0.7);
+                }
+                img.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
+        }
+
+        // =======================================================
+        // AÇÕES DE SALVAMENTO (COM TRAVA DE DUPLICIDADE)
+        // =======================================================
+        async function salvarEntrega() {
+            if(isSubmitting) return; // TRAVA DE CLIQUE DUPLO
+
+            let colab = document.getElementById('ent-colab').value; 
+            let dt = document.getElementById('ent-data').value;
+            
+            if(!dt) return Swal.fire("Atenção", "A Data e Hora da entrega é obrigatória!", "warning");
+            if(!colab) return Swal.fire("Atenção", "Selecione o Colaborador na lista!", "warning");
+            
+            let blocosDeItens = document.querySelectorAll('.linha-item');
+            if(blocosDeItens.length === 0) return Swal.fire("Atenção", "Você precisa adicionar pelo menos um EPI à ficha!", "warning");
+            
+            let itens = [];
+            for (let i = 0; i < blocosDeItens.length; i++) {
+                let box = blocosDeItens[i];
+                let epi = box.querySelector('.sel-epi').value; 
+                let qtd = box.querySelector('.sel-qtd').value; 
+                let ca = box.querySelector('.sel-ca').value; 
+                let duracao = box.querySelector('.sel-duracao').value; 
+                let motivo = box.querySelector('.sel-motivo').value;
+                
+                if(!epi || !qtd || !ca || !duracao || !motivo) return Swal.fire("Atenção", `Preencha todos os campos do Item #${i + 1}!`, "warning");
+                itens.push({ epi: epi, qtd: qtd, ca: ca, motivo: motivo, duracao: duracao });
+            }
+            
+            if(!document.getElementById('canvas-ass').getAttribute('d')) return Swal.fire("Atenção", "A Assinatura do Colaborador é obrigatória!", "warning");
+            
+            // Inicia salvamento
+            isSubmitting = true;
+            let btn = document.getElementById('btn-salvar-entrega'); 
+            let originalHtml = btn.innerHTML;
+            btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Preparando... ⏳"; 
+            btn.disabled = true;
+
+            let p = { 
+                acao: "salvar_entrega", 
+                colaborador: colab, data_hora: dt, 
+                matricula: document.getElementById('ent-matricula').value, 
+                admissao: document.getElementById('ent-admissao').value, 
+                funcao: document.getElementById('ent-funcao').value, 
+                setor: document.getElementById('ent-setor').value, 
+                assinatura: document.getElementById('canvas-ass').toDataURL(), 
+                foto: b64Foto, itens: itens 
+            };
+
+            adicionarNaFila(p);
+
+            Swal.fire({
+                title: "Blindado!", 
+                text: "Entrega registrada no celular!\n\nSerá enviada e o PDF gerado em 2º plano automaticamente.", 
+                icon: "success", 
+                confirmButtonColor: "var(--cor-primaria)"
+            });
+            
+            // Retorna pro menu limpando o formulario
+            abrirTelaEntrega(); // Reseta os campos
+            abrirTela('tela-menu'); // Navega pro menu
+            
+            btn.innerHTML = originalHtml; 
+            btn.disabled = false;
+            isSubmitting = false; // Libera a trava
+        }
+
+        async function salvarNovoColab() {
+            if(isSubmitting) return;
+
+            let funcSelect = document.getElementById('cad-func-select').value;
+            let funcaoFinal = (funcSelect === 'NOVO') ? document.getElementById('cad-func-novo').value : funcSelect;
+
+            let p = { 
+                acao: "cadastrar_colaborador", 
+                matricula: document.getElementById('cad-mat').value, 
+                nome: document.getElementById('cad-nome').value.toUpperCase(), 
+                funcao: funcaoFinal, 
+                setor: document.getElementById('cad-setor').value, 
+                admissao: document.getElementById('cad-adm').value 
+            };
+            if(!p.nome || !p.setor || !p.funcao || !p.admissao) return Swal.fire("Atenção", "Nome, Setor, Função e Data são obrigatórios!", "warning");
+            
+            isSubmitting = true;
+            let btn = document.getElementById('btn-salvar-colab');
+            let originalHtml = btn.innerHTML;
+            btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Salvando..."; btn.disabled = true;
+
+            adicionarNaFila(p);
+
+            bd.colaboradores.push({
+                nome: p.nome, matricula: p.matricula, funcao: p.funcao, setor: p.setor,
+                admissao: p.admissao.split('-').reverse().join('/'), ativo: true
+            });
+            localStorage.setItem('lince_bd', JSON.stringify(bd));
+            
+            document.getElementById('cad-mat').value = ""; document.getElementById('cad-nome').value = ""; document.getElementById('cad-adm').value = "";
+            
+            Swal.fire({title: "Sucesso", text: "Colaborador adicionado e pronto para receber EPIs!", icon: "success", confirmButtonColor: "var(--cor-primaria)"});
+            abrirTela('tela-menu');
+            
             btn.innerHTML = originalHtml; btn.disabled = false;
-            return;
+            isSubmitting = false;
         }
 
-        if(resJSON.sucesso) { 
-            window.open(resJSON.pdf, '_blank'); 
-        } else { 
-            Swal.fire("Erro", resJSON.erro, "error"); 
+        async function salvarEntrada() {
+            if(isSubmitting) return;
+
+            let p = { acao: "salvar_entrada_estoque", epi: document.getElementById('est-epi').value, qtd: document.getElementById('est-qtd').value, nf: document.getElementById('est-nf').value };
+            if(!p.epi || !p.qtd) return Swal.fire("Atenção", "Selecione o EPI e digite a Quantidade Comprada!", "warning");
+            
+            isSubmitting = true;
+            let btn = document.getElementById('btn-salvar-entrada');
+            let originalHtml = btn.innerHTML;
+            btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Registrando..."; btn.disabled = true;
+
+            adicionarNaFila(p);
+
+            let item = bd.estoque.find(x => x.epi === p.epi);
+            if(item) {
+                item.entradas = parseInt(item.entradas) + parseInt(p.qtd);
+                item.saldo = parseInt(item.saldo) + parseInt(p.qtd);
+                localStorage.setItem('lince_bd', JSON.stringify(bd));
+            }
+
+            document.getElementById('est-epi').value = ''; document.getElementById('est-qtd').value = ''; document.getElementById('est-nf').value = '';
+
+            Swal.fire({title: "Estoque Atualizado!", text: "A compra foi lançada no sistema.", icon: "success", confirmButtonColor: "var(--cor-primaria)"});
+            abrirTela('tela-menu');
+
+            btn.innerHTML = originalHtml; btn.disabled = false;
+            isSubmitting = false;
         }
-    } catch(e) { 
-        Swal.fire("Erro de Rede", e.message, "error"); 
-    }
-    
-    btn.innerHTML = originalHtml; 
-    btn.disabled = false;
-}
+
+        // =======================================================
+        // TELA DE CONSULTA DE HISTÓRICO E DEMISSÕES
+        // =======================================================
+        function carregarFichaColab() {
+            let colabNome = String(document.getElementById('cons-colab').value).trim().toUpperCase().replace(/\s+/g, ' '); 
+            
+            if(!colabNome) { 
+                document.getElementById('resultado-ficha').innerHTML = ""; 
+                document.getElementById('cracha-ativo').style.display = 'none';
+                document.getElementById('cracha-demitido').style.display = 'none';
+                document.getElementById('box-demissao').style.display = 'none';
+                document.getElementById('btn-gerar-pdf-ficha').style.display = 'none'; 
+                return; 
+            }
+
+            let colabObj = bd.colaboradores.find(c => c.nome.toUpperCase() === colabNome);
+            let funcao = colabObj ? colabObj.funcao : "";
+
+            if(colabObj) {
+                document.getElementById('btn-gerar-pdf-ficha').style.display = 'block'; 
+                
+                if(colabObj.ativo) {
+                    document.getElementById('cracha-ativo').style.display = 'block';
+                    document.getElementById('cracha-demitido').style.display = 'none';
+                    document.getElementById('cracha-adm1').innerText = colabObj.admissao;
+                    document.getElementById('box-demissao').style.display = 'block'; 
+                    document.getElementById('input-demissao').value = "";
+                    document.getElementById('area-recontratar').style.display = 'none';
+                } else {
+                    document.getElementById('cracha-ativo').style.display = 'none';
+                    document.getElementById('cracha-demitido').style.display = 'block';
+                    document.getElementById('cracha-adm2').innerText = colabObj.admissao;
+                    document.getElementById('cracha-dem').innerText = colabObj.demissao;
+                    document.getElementById('box-demissao').style.display = 'block'; 
+                    document.getElementById('input-demissao').value = colabObj.isoDemissao;
+                    document.getElementById('area-recontratar').style.display = 'block';
+                }
+            }
+
+            let validadesDaFuncao = bd.validades.filter(v => v.funcao.toUpperCase() === funcao.toUpperCase());
+            let exibicao = {};
+
+            validadesDaFuncao.forEach(v => {
+                let baseName = getBaseEpiName(v.epi.toUpperCase());
+                if(!exibicao[baseName]) { exibicao[baseName] = { id_item: null, epiBase: baseName, epi: baseName + " (Definir Tamanho)", data: '---', data_iso: '', qtd: '---', ca: '---', duracao_bruta: '', motivo: '', prox_troca: '---', status: 'NÃO ENTREGUE' }; }
+            });
+
+            let historico = bd.fichas[colabNome] || [];
+            historico.forEach(h => {
+                let nomeReal = String(h.epi).toUpperCase(); let baseName = getBaseEpiName(nomeReal);
+                exibicao[baseName] = { id_item: h.id_item, epiBase: baseName, epi: h.epi, data: h.data, data_iso: h.data_iso, qtd: h.qtd, ca: h.ca, duracao_bruta: h.duracao_bruta, motivo: h.motivo, prox_troca: h.prox_troca, status: h.status };
+            });
+
+            let html = "<table><tr><th>EPI</th><th>Última Data</th><th>C.A.</th><th>Troca</th><th>Status</th><th>Ações Rápidas</th></tr>";
+            
+            Object.values(exibicao).forEach(info => {
+                let cl = "";
+                if(info.status === "Vencido") cl = "status-vencido"; else if(info.status === "Válido") cl = "status-valido"; else cl = "status-neutro";
+
+                let termoBusca = (info.status === 'NÃO ENTREGUE') ? '' : info.epi; 
+                let acoes = `<div style="display:flex; justify-content:center; align-items:center; flex-direction:column; gap: 5px;">`;
+                
+                if(colabObj && colabObj.ativo) {
+                    acoes += `<button class="btn-acao-rapida" onclick="iniciarEntregaRapida('${termoBusca}')"><i class="ph ph-hand-pointing"></i> Entregar</button>`;
+                }
+                
+                if(info.id_item) {
+                    acoes += `<button class="btn-editar" onclick="abrirModalEdicao('${info.id_item}', '${info.epi}', '${info.ca}', '${info.qtd}', '${info.duracao_bruta}', '${info.motivo}', '${info.data_iso}')" title="Editar Registro"><i class="ph-fill ph-pencil-simple"></i> Edit</button>`;
+                }
+                acoes += `</div>`;
+                html += `<tr><td style="text-align:left;"><b>${info.epi}</b></td><td>${info.data}</td><td>${info.ca}</td><td>${info.prox_troca}</td><td><span class="${cl}">${info.status}</span></td><td>${acoes}</td></tr>`;
+            });
+            document.getElementById('resultado-ficha').innerHTML = html + "</table>";
+        }
+
+        async function salvarDemissao() {
+            if(isSubmitting) return;
+
+            let colabNome = document.getElementById('cons-colab').value;
+            let dtDemissao = document.getElementById('input-demissao').value;
+            
+            const { isConfirmed } = await Swal.fire({title: 'Desligamento', text: `Atualizar a data de desligamento de ${colabNome}?`, icon: 'warning', showCancelButton: true, confirmButtonColor: '#dc2626', confirmButtonText: 'Sim, Demitir'});
+            if(!isConfirmed) return;
+            
+            isSubmitting = true;
+            let p = { acao: "salvar_demissao", nome: colabNome, data_demissao: dtDemissao };
+            adicionarNaFila(p);
+
+            let c = bd.colaboradores.find(x => x.nome === colabNome);
+            if(c) {
+                c.ativo = false; c.isoDemissao = dtDemissao; c.demissao = dtDemissao.split('-').reverse().join('/');
+                localStorage.setItem('lince_bd', JSON.stringify(bd));
+                carregarFichaColab();
+            }
+
+            Swal.fire("Desligado", "Status atualizado localmente!", "success");
+            document.getElementById('input-demissao').value = "";
+            isSubmitting = false;
+        }
+
+        async function recontratarColaborador() {
+            if(isSubmitting) return;
+
+            let colabNome = document.getElementById('cons-colab').value;
+            let novaAdm = document.getElementById('input-nova-admissao').value;
+            
+            if(!novaAdm) return Swal.fire("Atenção", "Insira a data da nova admissão para recontratar!", "warning");
+            
+            const { isConfirmed } = await Swal.fire({title: 'Recontratar', text: `Deseja realmente reativar ${colabNome}?\nA data de demissão antiga será apagada.`, icon: 'question', showCancelButton: true, confirmButtonColor: '#059669', confirmButtonText: 'Sim, Reativar'});
+            if(!isConfirmed) return;
+            
+            isSubmitting = true;
+            let p = { acao: "recontratar_colaborador", nome: colabNome, nova_admissao: novaAdm };
+            adicionarNaFila(p);
+            
+            let c = bd.colaboradores.find(x => x.nome === colabNome);
+            if(c) {
+                c.ativo = true; c.admissao = novaAdm.split('-').reverse().join('/'); c.demissao = "";
+                localStorage.setItem('lince_bd', JSON.stringify(bd));
+                carregarFichaColab();
+            }
+
+            Swal.fire("Reativado", "Colaborador pronto para uso novamente!", "success");
+            document.getElementById('input-nova-admissao').value = '';
+            isSubmitting = false;
+        }
+
+        // =======================================================
+        // EDIÇÕES E PDFS
+        // =======================================================
+        function abrirModalEstoque(epi, ent, sai) {
+            document.getElementById('adj-epi-nome').innerText = epi;
+            document.getElementById('adj-epi-hidden').value = epi;
+            document.getElementById('adj-ent-atual').value = ent;
+            document.getElementById('adj-sai-atual').value = sai;
+            document.getElementById('adj-ent-nova').value = ent;
+            document.getElementById('adj-sai-nova').value = sai;
+            recalcularSaldoEstoque();
+            document.getElementById('modal-estoque').style.display = 'flex';
+        }
+
+        function recalcularSaldoEstoque() {
+            let e = parseFloat(document.getElementById('adj-ent-nova').value) || 0;
+            let s = parseFloat(document.getElementById('adj-sai-nova').value) || 0;
+            document.getElementById('adj-saldo-novo').value = e - s;
+        }
+
+        async function salvarAjusteEstoque() {
+            if(isSubmitting) return;
+
+            let epi = document.getElementById('adj-epi-hidden').value;
+            let entAtual = parseFloat(document.getElementById('adj-ent-atual').value) || 0;
+            let saiAtual = parseFloat(document.getElementById('adj-sai-atual').value) || 0;
+            let entNova = parseFloat(document.getElementById('adj-ent-nova').value) || 0;
+            let saiNova = parseFloat(document.getElementById('adj-sai-nova').value) || 0;
+
+            let diffEnt = entNova - entAtual;
+            let diffSai = saiNova - saiAtual;
+
+            if(diffEnt === 0 && diffSai === 0) return Swal.fire("Atenção", "Nenhuma alteração foi detectada.", "info");
+            
+            const { isConfirmed } = await Swal.fire({title: 'Ajuste de Estoque', text: `Confirma o ajuste manual do estoque para ${epi}?`, icon: 'question', showCancelButton: true, confirmButtonColor: 'var(--cor-primaria)'});
+            if(!isConfirmed) return;
+
+            isSubmitting = true;
+            let btn = document.getElementById('btn-salvar-estoque');
+            let originalHtml = btn.innerHTML;
+            btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Salvando... ⏳"; btn.disabled = true;
+
+            let p = { acao: "ajustar_estoque", epi: epi, diff_entrada: diffEnt, diff_saida: diffSai };
+            adicionarNaFila(p);
+
+            let item = bd.estoque.find(x => x.epi === epi);
+            if(item) {
+                item.entradas = entNova; item.saidas = saiNova; item.saldo = entNova - saiNova;
+                localStorage.setItem('lince_bd', JSON.stringify(bd));
+                popularListas();
+            }
+
+            document.getElementById('modal-estoque').style.display = 'none';
+            btn.innerHTML = originalHtml; btn.disabled = false;
+            Swal.fire("Sucesso", "Ajuste salvo localmente!", "success");
+            isSubmitting = false;
+        }
+
+        function abrirModalEdicao(id, epiNome, ca, qtd, duracao, motivo, dataIso) {
+            document.getElementById('edit-id').value = id; document.getElementById('edit-nome-epi').innerText = epiNome; document.getElementById('edit-ca').value = ca; document.getElementById('edit-qtd').value = qtd; document.getElementById('edit-duracao').value = duracao; document.getElementById('edit-motivo').value = motivo; document.getElementById('edit-data').value = dataIso;
+            document.getElementById('modal-edicao').style.display = 'flex';
+        }
+        function fecharModalEdicao() { document.getElementById('modal-edicao').style.display = 'none'; }
+
+        async function salvarEdicaoItem() {
+            if(isSubmitting) return;
+
+            let id = document.getElementById('edit-id').value; let ca = document.getElementById('edit-ca').value; let qtd = document.getElementById('edit-qtd').value; let duracao = document.getElementById('edit-duracao').value; let motivo = document.getElementById('edit-motivo').value; let dataHora = document.getElementById('edit-data').value;
+            if(!qtd || qtd <= 0 || !ca || !duracao || duracao <= 0 || !dataHora) return Swal.fire("Atenção", "Preencha todos os campos do EPI corretamente para salvar a edição!", "warning");
+            
+            const { isConfirmed } = await Swal.fire({title: 'Substituição Crítica', text: "Tem certeza que deseja alterar este registro? O PDF da ficha do Colaborador será sobrescrito e atualizado no Drive.", icon: 'warning', showCancelButton: true, confirmButtonColor: '#d97706'});
+            if(!isConfirmed) return;
+
+            isSubmitting = true;
+            let btn = document.getElementById('btn-salvar-edicao'); 
+            let originalHtml = btn.innerHTML;
+            btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Preparando... ⏳"; btn.disabled = true;
+
+            let p = { acao: "editar_item", id_item: id, ca: ca, qtd: qtd, duracao: duracao, motivo: motivo, data_hora: dataHora };
+            adicionarNaFila(p);
+
+            fecharModalEdicao(); 
+            abrirTela('tela-menu');
+            
+            btn.innerHTML = originalHtml; btn.disabled = false;
+            Swal.fire("Editado", "A edição foi registrada e o novo PDF será gerado em breve.", "success");
+            isSubmitting = false;
+        }
+
+        // =======================================================
+        // GERAÇÃO DE PDF E ALERTA WHATSAPP
+        // =======================================================
+        function verificarVencidosGlobais() {
+            window.listaGlobaisVencidos = [];
+            bd.colaboradores.forEach(c => {
+                if(!c.ativo) return; 
+                let f = bd.fichas[c.nome];
+                if(f) {
+                    let episArray = {};
+                    f.forEach(item => { episArray[getBaseEpiName(item.epi)] = item; });
+                    Object.values(episArray).forEach(item => {
+                        if(item.status === 'Vencido') { 
+                            window.listaGlobaisVencidos.push({ colab: c.nome, setor: c.setor, epi: item.epi, data: item.prox_troca }); 
+                        }
+                    });
+                }
+            });
+            if(window.listaGlobaisVencidos.length > 0) {
+                document.getElementById('qtd-vencidos').innerText = window.listaGlobaisVencidos.length;
+                document.getElementById('modal-vencidos').style.display = 'flex';
+            }
+        }
+
+        function enviarWhatsappGestor() {
+            let setorFiltro = document.getElementById('modal-setor-whatsapp').value;
+            let msg = "*🚨 RELATÓRIO DE EPIs VENCIDOS*\n\n";
+            let agrupado = {};
+            let encontrou = false;
+            
+            window.listaGlobaisVencidos.forEach(v => {
+                let setorNormalizado = v.setor ? v.setor.toUpperCase() : "OUTROS";
+                if (setorFiltro === "TODOS" || setorFiltro === setorNormalizado || (setorFiltro === "ADM" && setorNormalizado === "ADMINISTRATIVO")) {
+                    if(!agrupado[v.colab]) agrupado[v.colab] = [];
+                    agrupado[v.colab].push(v);
+                    encontrou = true;
+                }
+            });
+            
+            if(!encontrou) return Swal.fire("Aviso", "Nenhum EPI vencido para o setor selecionado.", "info");
+
+            Object.keys(agrupado).forEach(colab => {
+                msg += `👷 *${colab}*\n`;
+                agrupado[colab].forEach(epi => { msg += ` - ${epi.epi} (Venceu: ${epi.data})\n`; });
+                msg += `\n`;
+            });
+            
+            msg += "Acesse o sistema RH Lince para realizar as trocas.";
+            window.open('https://wa.me/?text=' + encodeURIComponent(msg), '_blank');
+        }
+
+        async function gerarRelatorioEstoque() {
+            if (!navigator.onLine) return Swal.fire("Offline", "Você precisa estar conectado à internet para gerar o PDF do Estoque!", "error");
+            let btn = document.getElementById('btn-pdf-estoque'); 
+            let originalHtml = btn.innerHTML;
+            btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Gerando PDF... ⏳"; btn.disabled = true;
+            try {
+                let r = await fetch(API_URL, { method: 'POST', redirect: 'follow', headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify({acao: "gerar_pdf_estoque"}) }); 
+                let d = await r.json();
+                if(d.sucesso) { window.open(d.pdf, '_blank'); } else { Swal.fire("Erro", d.erro, "error"); }
+            } catch(e) { Swal.fire("Erro de Rede", e.message, "error"); }
+            btn.innerHTML = originalHtml; btn.disabled = false;
+        }
+
+        async function solicitarPdfColaborador() {
+            if (!navigator.onLine) return Swal.fire("Offline", "Você precisa estar conectado à internet para gerar o PDF da Ficha Completa!", "error");
+            
+            let colabNome = document.getElementById('cons-colab').value;
+            if(!colabNome) return;
+            
+            let colabObj = bd.colaboradores.find(c => c.nome.toUpperCase() === colabNome.toUpperCase());
+            if(!colabObj) return;
+
+            let btn = document.getElementById('btn-gerar-pdf-ficha');
+            let originalHtml = btn.innerHTML;
+            btn.innerHTML = "<i class='ph ph-spinner ph-spin'></i> Gerando Ficha Completa... ⏳"; 
+            btn.disabled = true;
+
+            let p = { acao: "gerar_pdf_colaborador", colab: colabObj.nome, matricula: colabObj.matricula, admissao: colabObj.admissao, funcao: colabObj.funcao, setor: colabObj.setor };
+
+            try {
+                let response = await fetch(API_URL, { method: 'POST', redirect: 'follow', headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(p) });
+                let textResult = await response.text();
+                let resJSON;
+                
+                try {
+                    resJSON = JSON.parse(textResult);
+                } catch (parseError) {
+                    Swal.fire({title: "Arquivo Gigante!", text: "O PDF foi gerado e salvo na pasta do Drive!\n\nComo o histórico do colaborador é muito grande, o arquivo já está disponível na nuvem.", icon: "success", confirmButtonColor: "var(--cor-primaria)"});
+                    btn.innerHTML = originalHtml; btn.disabled = false;
+                    return;
+                }
+
+                if(resJSON.sucesso) { 
+                    window.open(resJSON.pdf, '_blank'); 
+                } else { 
+                    Swal.fire("Erro", resJSON.erro, "error"); 
+                }
+            } catch(e) { 
+                Swal.fire("Erro de Rede", e.message, "error"); 
+            }
+            
+            btn.innerHTML = originalHtml; 
+            btn.disabled = false;
+        }
+    </script>
+</body>
+</html>
