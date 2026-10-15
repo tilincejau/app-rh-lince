@@ -510,7 +510,26 @@
             }
         }
 
+        function lerFila() { try { return JSON.parse(localStorage.getItem('rh_fila_requisicoes')) || []; } catch(e) { return []; } }
+        function removerDaFila(localId) {
+            // Relê a fila na hora de remover para não apagar itens adicionados durante a sincronização
+            let atual = lerFila().filter(item => item._localId !== localId);
+            localStorage.setItem('rh_fila_requisicoes', JSON.stringify(atual));
+            return atual;
+        }
+
+        // Garante que só UMA aba/janela do app sincroniza por vez (a fila no localStorage é compartilhada entre abas)
         async function sincronizarSegundoPlano(manual = false) {
+            if (navigator.locks && navigator.locks.request) {
+                return navigator.locks.request('rh_sync_lock', { ifAvailable: true }, async (lock) => {
+                    if (!lock) { if(manual) mostrarToast("<i class='ph ph-spinner ph-spin'></i> Sincronização em andamento...", "#d97706"); return; }
+                    return executarSincronizacao(manual);
+                });
+            }
+            return executarSincronizacao(manual);
+        }
+
+        async function executarSincronizacao(manual = false) {
             if (!navigator.onLine) { if(manual) mostrarToast("<i class='ph ph-wifi-x'></i> Sem conexão à internet", "#dc2626"); return; }
             if (isSyncing) { if(manual) mostrarToast("<i class='ph ph-spinner ph-spin'></i> Sincronização em andamento...", "#d97706"); return; }
 
@@ -526,21 +545,26 @@
 
             if(manual) mostrarToast(`<i class='ph ph-arrows-clockwise ph-spin'></i> Sincronizando ${fila.length} pendências...`, "#d97706");
 
-            for (let i = 0; i < fila.length; i++) {
-                let reqPayload = fila[i];
-                try {
-                    let p = {...reqPayload}; delete p._localId;
-                    let resp = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p), headers: { "Content-Type": "text/plain;charset=utf-8" }});
-                    let resJSON;
-                    try { resJSON = await resp.json(); } catch(e) { continue; }
-                    
-                    if (resJSON.erro) { console.error("Erro:", resJSON.erro); continue; }
-                    if (resJSON.sucesso) {
-                        novaFila = novaFila.filter(item => item._localId !== reqPayload._localId);
-                        localStorage.setItem('rh_fila_requisicoes', JSON.stringify(novaFila));
-                        processouAlgo = true;
-                    }
-                } catch (e) { break; }
+            try {
+                for (let i = 0; i < fila.length; i++) {
+                    let reqPayload = fila[i];
+                    try {
+                        let p = {...reqPayload}; delete p._localId;
+                        // ID único da requisição: o servidor usa para ignorar reenvios do mesmo registro
+                        p.id_requisicao = reqPayload._localId;
+                        let resp = await fetch(API_URL, { method: 'POST', body: JSON.stringify(p), headers: { "Content-Type": "text/plain;charset=utf-8" }});
+                        let resJSON;
+                        try { resJSON = await resp.json(); } catch(e) { continue; }
+
+                        if (resJSON.erro) { console.error("Erro:", resJSON.erro); continue; }
+                        if (resJSON.sucesso) {
+                            novaFila = removerDaFila(reqPayload._localId);
+                            processouAlgo = true;
+                        }
+                    } catch (e) { break; }
+                }
+            } finally {
+                isSyncing = false;
             }
 
             atualizarBotaoSyncManual();
@@ -553,7 +577,6 @@
                 }
                 recarregarDadosSilenciosamente();
             }
-            isSyncing = false;
         }
 
         async function forcarSincronizacaoManual() {
