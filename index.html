@@ -198,7 +198,8 @@
         .alerta-est-saldo.um { background: #fef3c7; color: #b45309; }
 
         /* Lista de EPIs da entrega: fonte menor para caber mais texto */
-        .sel-epi, .sel-epi option, .sel-epi optgroup { font-size: 12px; }
+        .sel-epi, .sel-epi option, .sel-epi optgroup,
+        #ent-colab, #ent-colab option, #cons-colab, #cons-colab option { font-size: 12px; }
 
         @media (max-width: 600px) {
             .app-container { padding: 15px 10px; }
@@ -782,9 +783,9 @@
             bd.colaboradores.sort((a,b) => a.nome.localeCompare(b.nome)).forEach(c => {
                 if(selectId === 'ent-colab' && !c.ativo) return; 
                 if(c.nome.toLowerCase().includes(texto.toLowerCase())) { 
-                    let tag = c.ativo ? '' : ' [OFF]';
-                    let textoCompleto = `${c.nome} - ${c.funcao}${tag}`;
-                    let textoCurto = limitarTexto(textoCompleto, 36); 
+                    // [OFF] na frente para nunca ser cortado; função abreviada; sem corte fixo de caracteres
+                    let tag = c.ativo ? '' : '⛔ OFF | ';
+                    let textoCurto = `${tag}${c.nome} - ${abreviarFuncao(c.funcao)}`; 
                     options += `<option value="${c.nome}">${textoCurto}</option>`; 
                 }
             });
@@ -834,6 +835,18 @@
                 return `🟢 ${diffDias}d`; 
             }
             return "⚪ ?";
+        }
+
+        // Abrevia a função só na exibição da lista de colaboradores
+        function abreviarFuncao(funcao) {
+            return abreviarNomeEpi(funcao || '')
+                .replace(/AUXILIAR/gi, 'AUX.')
+                .replace(/ASSISTENTE/gi, 'ASSIST.')
+                .replace(/OPERADOR/gi, 'OPER.')
+                .replace(/ADMINISTRATIV[OA]/gi, 'ADM.')
+                .replace(/MOTORISTA/gi, 'MOTOR.')
+                .replace(/SUPERVISOR/gi, 'SUPERV.')
+                .replace(/\s+/g, ' ').trim();
         }
 
         // Abrevia palavras longas só na exibição da lista (o valor salvo continua o nome completo)
