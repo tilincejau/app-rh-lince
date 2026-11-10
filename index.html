@@ -182,6 +182,24 @@
             border: 1.5px dashed #6ee7b7; display: none; 
         }
 
+        /* Alerta de estoque no menu */
+        .alerta-estoque { background: #fef2f2; border: 1.5px solid #fca5a5; border-radius: 12px; padding: 12px; margin-bottom: 16px; cursor: pointer; }
+        .alerta-est-topo { display: flex; gap: 10px; align-items: center; color: #b91c1c; margin-bottom: 8px; }
+        .alerta-est-topo i { font-size: 26px; flex-shrink: 0; }
+        .alerta-est-topo b { display: block; font-size: 14px; }
+        .alerta-est-topo small { display: block; font-size: 11px; color: #7f1d1d; font-weight: 500; }
+        .alerta-est-lista { max-height: 180px; overflow-y: auto; background: #fff; border-radius: 8px; }
+        .alerta-est-linha { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 10px; border-bottom: 1px solid #fee2e2; font-size: 12px; }
+        .alerta-est-linha:last-child { border-bottom: none; }
+        .alerta-est-nome { font-weight: 600; color: var(--cor-texto); }
+        .alerta-est-saldo { font-weight: 700; font-size: 11px; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+        .alerta-est-saldo.neg { background: #dc2626; color: #fff; }
+        .alerta-est-saldo.zero { background: #fee2e2; color: #b91c1c; }
+        .alerta-est-saldo.um { background: #fef3c7; color: #b45309; }
+
+        /* Lista de EPIs da entrega: fonte menor para caber mais texto */
+        .sel-epi, .sel-epi option, .sel-epi optgroup { font-size: 12px; }
+
         @media (max-width: 600px) {
             .app-container { padding: 15px 10px; }
             .logo { max-width: 180px; margin-bottom: 10px; }
@@ -227,6 +245,7 @@
 
         <div class="card">
             <h2>MENU PRINCIPAL</h2>
+            <div id="alerta-estoque-menu"></div>
             <button class="btn-principal" onclick="abrirTelaEntrega()"><i class="ph ph-hard-hat"></i> Entrega de EPIs</button>
             <button class="btn-principal" onclick="abrirTela('tela-consulta')"><i class="ph ph-magnifying-glass"></i> Consulta Histórico</button>
             <button class="btn-principal" onclick="abrirTela('tela-cadastro-colab')"><i class="ph ph-user-plus"></i> Cadastrar Colaborador</button>
@@ -608,7 +627,8 @@
                     localStorage.setItem('lince_bd', JSON.stringify(bd));
                     popularListas();
                     if(document.getElementById('tela-consulta').style.display === 'block') { carregarFichaColab(); } 
-                    verificarVencidosGlobais();
+                    // Se ao abrir o app ainda não havia dados salvos, mostra o popup agora (primeira vez); senão só atualiza a lista
+                    verificarVencidosGlobais(!window.popupVencidosJaExibido && !window.popupVencidosTentado);
                 }
             } catch(e) {}
         }
@@ -625,7 +645,7 @@
                 window.usuarioLogado = userObj.u;
                 abrirTela('tela-menu');
                 initPad();
-                if(bdSalvo) verificarVencidosGlobais();
+                if(bdSalvo) { verificarVencidosGlobais(true); window.popupVencidosTentado = true; }
                 recarregarDadosSilenciosamente();
             }
         };
@@ -656,7 +676,8 @@
                     popularListas(); 
                     abrirTela('tela-menu'); 
                     initPad();
-                    verificarVencidosGlobais();
+                    verificarVencidosGlobais(true);
+                    window.popupVencidosTentado = true;
                 } else { Swal.fire("Acesso Negado", d.erro || "Usuário ou Senha incorretos!", "error"); }
             } catch(e) { Swal.fire("Erro de Rede", "Verifique o link do Apps Script ou sua conexão de internet.", "error"); }
             
@@ -721,6 +742,38 @@
                 </tr>`; 
             });
             document.getElementById('tabela-estoque').innerHTML = htmlEst + "</table>";
+            renderizarAlertaEstoque();
+        }
+
+        // Alerta no menu: EPIs com saldo 1, zero ou negativo
+        function renderizarAlertaEstoque() {
+            let box = document.getElementById('alerta-estoque-menu');
+            if(!box || !bd || !bd.estoque) return;
+            let criticos = bd.estoque
+                .filter(e => (parseFloat(e.saldo) || 0) <= 1)
+                .sort((a, b) => (parseFloat(a.saldo) || 0) - (parseFloat(b.saldo) || 0) || String(a.epi).localeCompare(String(b.epi)));
+
+            if(criticos.length === 0) { box.innerHTML = ""; return; }
+
+            let qtdZerados = criticos.filter(e => (parseFloat(e.saldo) || 0) <= 0).length;
+            let linhas = criticos.map(e => {
+                let saldo = parseFloat(e.saldo) || 0;
+                let classe = saldo < 0 ? 'neg' : (saldo === 0 ? 'zero' : 'um');
+                let rotulo = saldo < 0 ? `${saldo} (negativo)` : (saldo === 0 ? 'Zerado' : '1 unid.');
+                return `<div class="alerta-est-linha"><span class="alerta-est-nome">${e.epi}</span><span class="alerta-est-saldo ${classe}">${rotulo}</span></div>`;
+            }).join('');
+
+            box.innerHTML = `
+                <div class="alerta-estoque" onclick="abrirTela('tela-estoque')">
+                    <div class="alerta-est-topo">
+                        <i class="ph-fill ph-warning"></i>
+                        <div>
+                            <b>Estoque baixo: ${criticos.length} ${criticos.length === 1 ? 'item' : 'itens'}</b>
+                            <small>${qtdZerados} zerado(s) ou negativo(s) · toque para abrir o estoque</small>
+                        </div>
+                    </div>
+                    <div class="alerta-est-lista">${linhas}</div>
+                </div>`;
         }
 
         function filtrarColab(texto, selectId) {
@@ -767,8 +820,8 @@
             let epiKey = String(epiName).trim().toUpperCase();
             let proxTrocaStr = window.statusEpiAtual[epiKey];
 
-            if (!proxTrocaStr) return "⚪ NOVO"; 
-            if (proxTrocaStr === "---" || proxTrocaStr === "N/A") return "🟢 S/ VAL."; 
+            if (!proxTrocaStr) return "⚪ Novo"; 
+            if (proxTrocaStr === "---" || proxTrocaStr === "N/A") return "🟢 S/Val"; 
 
             let p = proxTrocaStr.split('/');
             if(p.length === 3) {
@@ -776,11 +829,24 @@
                 let hj = new Date(); hj.setHours(0,0,0,0);
                 let diffDias = Math.ceil((dTroca - hj.getTime()) / (1000 * 3600 * 24));
 
-                if (diffDias < 0) return `🔴 VENCIDO (${Math.abs(diffDias)}d)`; 
-                if (diffDias <= 15) return `🟡 VENCE EM ${diffDias}d`; 
-                return `🟢 VÁLIDO (${diffDias}d)`; 
+                if (diffDias < 0) return `🔴 Venc.${Math.abs(diffDias)}d`; 
+                if (diffDias <= 15) return `🟡 ${diffDias}d`; 
+                return `🟢 ${diffDias}d`; 
             }
-            return "⚪ DESC.";
+            return "⚪ ?";
+        }
+
+        // Abrevia palavras longas só na exibição da lista (o valor salvo continua o nome completo)
+        function abreviarNomeEpi(nome) {
+            return String(nome)
+                .replace(/\s*-\s*MOTOCICLISTA/gi, ' MOTO')
+                .replace(/MOTOCICLISTA/gi, 'MOTO')
+                .replace(/PROTEÇÃO|PROTECAO/gi, 'PROT.')
+                .replace(/IMPERMEAVEL|IMPERMEÁVEL/gi, 'IMPERM.')
+                .replace(/REFLETIVA/gi, 'REFLET.')
+                .replace(/SEGURANÇA/gi, 'SEG.')
+                .replace(/ERGONOMICO|ERGONÔMICO/gi, 'ERGON.')
+                .replace(/\s+/g, ' ').trim();
         }
 
         function gerarOpcoesEpiAgrupadas(selectAtual) {
@@ -804,7 +870,8 @@
                 let isSelected = episSelecionados.includes(eUpper);
                 let checkmark = isSelected ? "✅ " : ""; 
                 let disabledAttr = isSelected ? "disabled" : "";
-                let textoCurto = limitarTexto(`${checkmark}${e} [${status}]`, 36);
+                // Bolinha + dias na FRENTE: mesmo que o nome seja cortado, o status sempre aparece
+                let textoCurto = isSelected ? `✅ ${abreviarNomeEpi(e)}` : `${status} | ${abreviarNomeEpi(e)}`;
 
                 if (nomesEpisDaFuncao.includes(eUpper)) { 
                     optFuncao += `<option value="${e}" ${disabledAttr}>${textoCurto}</option>`; 
@@ -1284,7 +1351,10 @@
         // =======================================================
         // GERAÇÃO DE PDF E ALERTA WHATSAPP
         // =======================================================
-        function verificarVencidosGlobais() {
+        // Controle: o popup de vencidos aparece UMA vez por entrada no app
+        window.popupVencidosJaExibido = false;
+
+        function verificarVencidosGlobais(mostrarPopup) {
             window.listaGlobaisVencidos = [];
             bd.colaboradores.forEach(c => {
                 if(!c.ativo) return; 
@@ -1299,8 +1369,10 @@
                     });
                 }
             });
-            if(window.listaGlobaisVencidos.length > 0) {
-                document.getElementById('qtd-vencidos').innerText = window.listaGlobaisVencidos.length;
+            document.getElementById('qtd-vencidos').innerText = window.listaGlobaisVencidos.length;
+            // Só abre o popup quando o usuário entra no app (login ou reabertura), nunca nas sincronizações automáticas
+            if(mostrarPopup && !window.popupVencidosJaExibido && window.listaGlobaisVencidos.length > 0) {
+                window.popupVencidosJaExibido = true;
                 document.getElementById('modal-vencidos').style.display = 'flex';
             }
         }
